@@ -1,0 +1,93 @@
+[importlinter]
+root_package = app
+include_external_packages = True
+
+[importlinter:contract:domain-is-pure]
+name = Domain depends on nothing else in the app, and on no I/O libraries
+type = forbidden
+source_modules =
+    app.domain
+forbidden_modules =
+    app.integrations
+    app.persistence
+    app.services
+    app.web
+    app.jobs
+    app.container
+    app.config
+    app.main
+    httpx
+    sqlalchemy
+    fastapi
+    starlette
+
+[importlinter:contract:integrations-are-independent]
+name = Each integration layer is independent of every other
+type = independence
+modules =
+    app.integrations.evertrace
+    app.integrations.rocketreach
+    app.integrations.affinity
+    app.integrations.inbox
+
+[importlinter:contract:integrations-only-use-domain]
+name = Integrations depend only on the domain (never on persistence, services or web)
+type = forbidden
+source_modules =
+    app.integrations
+forbidden_modules =
+    app.persistence
+    app.services
+    app.web
+    app.jobs
+    app.container
+    app.main
+    sqlalchemy
+    fastapi
+    starlette
+
+[importlinter:contract:persistence-only-uses-domain]
+name = Persistence depends only on the domain
+type = forbidden
+source_modules =
+    app.persistence
+forbidden_modules =
+    app.integrations
+    app.services
+    app.web
+    app.jobs
+    app.container
+    app.main
+    httpx
+    fastapi
+    starlette
+
+[importlinter:contract:services-use-ports-only]
+name = Services depend on domain ports, never on concrete adapters, the DB or the web framework
+type = forbidden
+source_modules =
+    app.services
+forbidden_modules =
+    app.integrations
+    app.persistence
+    app.web
+    app.jobs
+    app.container
+    app.main
+    httpx
+    sqlalchemy
+    fastapi
+    starlette
+
+[importlinter:contract:web-uses-services-only]
+name = The dashboard never talks to adapters or the DB directly
+type = forbidden
+source_modules =
+    app.web
+forbidden_modules =
+    app.integrations
+    app.persistence
+    app.jobs
+    app.container
+    httpx
+    sqlalchemy
