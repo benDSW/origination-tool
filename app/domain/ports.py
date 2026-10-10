@@ -12,8 +12,9 @@ raw response bodies.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import datetime
+from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
 from app.domain.models import (
@@ -50,6 +51,14 @@ class IntegrationError(RuntimeError):
 
 class NotFoundError(LookupError):
     pass
+
+
+class LookupReservation(StrEnum):
+    """Result of :meth:`Store.reserve_email_lookup`."""
+
+    RESERVED = "reserved"
+    CAP_REACHED = "cap_reached"
+    ALREADY_CLAIMED = "already_claimed"
 
 
 # --------------------------------------------------------------------------- #
@@ -200,12 +209,39 @@ class Store(Protocol):
 
     def count_email_lookups_since(self, provider: EmailSource, since: datetime) -> int: ...
 
-    # Runs + locking
-    def try_acquire_lock(self, name: str, *, now: datetime, ttl_seconds: int) -> bool:
-        """Atomically take a named lock; an expired lock (older than ttl) may be stolen."""
+    # RocketReach budget (race-safe: the claim and the daily count are one transaction)
+    def reserve_email_lookup(
+        self, reservation: EmailLookupRecord, *, day_start: datetime, daily_cap: int
+    ) -> LookupReservation:
+        """Atomically claim this founder's lookup AND one unit of today's budget, BEFORE
+        the paid call is made. CAP_REACHED writes nothing; ALREADY_CLAIMED means a
+        non-error lookup already exists for (founder, provider)."""
         ...
 
-    def release_lock(self, name: str) -> None: ...
+    def lookups_reserved_since(self, provider: EmailSource, day_start: datetime) -> int: ...
+
+    # Erasure (UK GDPR) - suppressions hold only opaque keyed hashes, never PII
+    def erase_founder(self, founder_id: int, *, suppress: Sequence[str], at: datetime) -> None:
+        """Hard-delete the founder and everything cascading, and record the given
+        suppression hashes, in one transaction. NotFoundError if missing."""
+        ...
+
+    def is_suppressed(self, key_hashes: Sequence[str]) -> bool: ...
+
+    # Runs + owned locks (only the holder can heartbeat or release)
+    def acquire_owned_lock(self, name: str, *, owner: str, now: datetime, ttl_seconds: int) -> bool:
+        """Atomically take a named lock; a stale lock (not refreshed within ttl) may be
+        taken over."""
+        ...
+
+    def refresh_owned_lock(self, name: str, *, owner: str, now: datetime) -> bool:
+        """Heartbeat. False means the lock was lost: the holder must stop working."""
+        ...
+
+    def release_owned_lock(self, name: str, *, owner: str) -> None:
+        """Release only if ``owner`` still holds it."""
+        ...
+
     def add_run(self, run: RunRecord) -> RunRecord: ...
     def save_run(self, run: RunRecord) -> RunRecord: ...
     def list_runs(self, limit: int = 50) -> list[RunRecord]: ...  # newest first
@@ -219,3 +255,9 @@ class Store(Protocol):
     def save_template(self, subject: str, body: str) -> EmailTemplate:
         """Store a new version (version = previous + 1)."""
         ...
+
+    # Dashboard sessions (server-side, so logout / password change revokes cookies)
+    def add_admin_session(self, sid_hash: str, *, created_at: datetime, expires_at: datetime) -> None: ...
+    def admin_session_active(self, sid_hash: str, *, now: datetime) -> bool: ...
+    def delete_admin_session(self, sid_hash: str) -> None: ...
+    def delete_all_admin_sessions(self) -> int: ...

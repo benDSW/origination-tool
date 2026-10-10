@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Template{% endblock %}
+{% block content %}
+<h1>Email template <span class="muted small">current version {{ template.version }}</span></h1>
+{{ m.problems_list(problems) }}
+<div class="grid">
+  <form method="post" action="/template" id="template-form" class="stack" data-preview-url="/template/preview">
+    {{ m.csrf() }}
+    <label for="subject">Subject (max {{ max_subject }} characters)</label>
+    <input id="subject" name="subject" type="text" value="{{ subject }}" required>
+    <label for="body">Body (max {{ max_body }} characters)</label>
+    <textarea id="body" name="body" rows="18" required>
+{{ body }}</textarea>
+    <p>Allowed merge fields:
+    {% for fld in fields %}<code>{{ "{" ~ fld ~ "}" }}</code> {% endfor %}
+    </p>
+    <label><input type="checkbox" name="rerender" value="true" checked> Re-render open drafts with the new version</label>
+    <button type="submit" class="primary">Save template</button>
+  </form>
+  <section class="card" id="preview" aria-live="polite">
+    <h2>Live preview</h2>
+    <p class="muted" id="preview-status">Edit the template to see a preview for a sample founder.</p>
+    <ul id="preview-problems" class="problems"></ul>
+    <pre id="preview-text"></pre>
+  </section>
+</div>
+<section class="card">
+  <h2>Re-render open drafts</h2>
+  <p>Drafts not yet sent keep the wording they were created with until they are re-rendered with the current template.</p>
+  {{ m.post_button("/template/rerender", "Re-render open drafts") }}
+</section>
+{% endblock %}

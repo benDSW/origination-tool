@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<h1>Overview</h1>
+<div class="actions">
+  {{ m.post_button("/runs", "Run now", cls="primary") }}
+  {{ m.post_button("/tracking/sync", "Sync tracking") }}
+</div>
+
+<section>
+  <h2>Founders by status</h2>
+  <table class="counts">
+    <thead><tr>{% for s in statuses %}<th scope="col">{{ s | label }}</th>{% endfor %}</tr></thead>
+    <tbody><tr>{% for s in statuses %}<td data-status="{{ s.value }}">{{ summary.counts.get(s, 0) }}</td>{% endfor %}</tr></tbody>
+  </table>
+</section>
+
+<section class="grid">
+  <div class="card">
+    <h2>Latest run</h2>
+    {% set run = summary.latest_run %}
+    {% if run %}
+      <p><span class="badge state-{{ run.state.value }}">{{ run.state | label }}</span>
+         {{ run.trigger | label }}{% if run.dry_run %} (dry run){% endif %},
+         started {{ run.started_at | dt }}{% if run.finished_at %}, finished {{ run.finished_at | dt }}{% endif %}</p>
+      <p>Signals {{ run.counts.signals_seen }}, new founders {{ run.counts.founders_new }},
+         drafted {{ run.counts.drafted }}, needs email {{ run.counts.needs_email }},
+         excluded {{ run.counts.excluded_location + run.counts.excluded_affinity }},
+         RocketReach lookups {{ run.counts.rocketreach_lookups }}, tracking updates {{ run.counts.tracking_updates }},
+         errors {{ run.counts.errors }}</p>
+      {% if run.errors %}
+      <details><summary>{{ run.errors | length }} error message(s)</summary>
+        <ul>{% for e in run.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      </details>
+      {% endif %}
+    {% else %}
+      <p class="muted">No runs yet.</p>
+    {% endif %}
+    <p><a href="/runs">Run history</a></p>
+  </div>
+  <div class="card">
+    <h2>RocketReach credits</h2>
+    <p class="big">{{ summary.rocketreach_credits if summary.rocketreach_credits is not none else "unknown" }}</p>
+    <p class="muted">Checked at most every 5 minutes. Updated {{ summary.generated_at | dt }}.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Follow-ups due ({{ summary.follow_ups_due | length }})</h2>
+  <p class="muted">Sent at least {{ summary.follow_up_after_days }} days ago with no reply.</p>
+  {% if summary.follow_ups_due %}
+  <table>
+    <thead><tr><th>Founder</th><th>Company</th><th>Sent</th><th>Days waiting</th></tr></thead>
+    <tbody>
+    {% for item in summary.follow_ups_due %}
+      <tr>
+        <td><a href="/outreach/{{ item.outreach.id }}">{{ item.founder.full_name }}</a></td>
+        <td>{{ item.founder.company_name or "-" }}</td>
+        <td>{{ item.outreach.sent_at | dt }}</td>
+        <td>{{ item.days_waiting }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Nothing due.</p>
+  {% endif %}
+</section>
+{% endblock %}

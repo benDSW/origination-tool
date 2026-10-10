@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Searches{% endblock %}
+{% block content %}
+<h1>Searches</h1>
+<div class="actions">
+  {{ m.post_button("/searches/sync", "Sync from Evertrace") }}
+  <a class="button primary" href="/searches/new">New search</a>
+</div>
+<p class="muted">Only enabled searches are used by the daily run. Searches synced from Evertrace start disabled.</p>
+{% for c in configs %}
+<article class="card search" id="search-{{ c.id }}">
+  <h2>{{ c.title }} <span class="muted small">{{ c.external_id }}</span>
+    {% if c.enabled %}<span class="badge badge-on">enabled</span>{% else %}<span class="badge">disabled</span>{% endif %}</h2>
+  <p class="muted">Watermark {{ c.watermark | dt }} - last synced {{ c.last_synced_at | dt }}</p>
+  <form method="post" action="/searches/{{ c.id }}" class="inline-fields">
+    {{ m.csrf() }}
+    <label><input type="checkbox" name="enabled" value="true"{% if c.enabled %} checked{% endif %}> Enabled</label>
+    <label for="policy-{{ c.id }}">Location policy</label>
+    <select id="policy-{{ c.id }}" name="location_policy">
+    {% for p in policies %}
+      <option value="{{ p.value }}"{% if p == c.location_policy %} selected{% endif %}>{{ p | label }}</option>
+    {% endfor %}
+    </select>
+    <label for="lookback-{{ c.id }}">Lookback (days)</label>
+    <input id="lookback-{{ c.id }}" name="lookback_days" type="number" min="1" max="730" value="{{ c.lookback_days }}" required>
+    <button type="submit">Save</button>
+  </form>
+  {{ m.post_button("/searches/" ~ c.id ~ "/run", "Run this search now", cls="secondary") }}
+</article>
+{% else %}
+<p class="muted">No searches yet. Click "Sync from Evertrace".</p>
+{% endfor %}
+{% endblock %}

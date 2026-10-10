@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Pipeline{% endblock %}
+{% block content %}
+<h1>Pipeline</h1>
+{% for status, items in columns %}
+<section id="column-{{ status.value }}">
+  <h2>{{ status | label | capitalize }} ({{ items | length }})</h2>
+  {% if items %}
+  <table>
+    <thead><tr><th>Founder</th><th>Company</th><th>Email</th><th>Sent</th><th>Replied</th><th>Deck</th><th>Days waiting</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for item in items %}
+      {% set o = item.outreach %}
+      <tr id="outreach-{{ o.id }}"{% if item.follow_up_due %} class="follow-up"{% endif %}>
+        <td><a href="/outreach/{{ o.id }}">{{ item.founder.full_name }}</a></td>
+        <td>{{ item.founder.company_name or "-" }}</td>
+        <td>{{ o.email or "-" }}</td>
+        <td>{{ o.sent_at | dt }}</td>
+        <td>{{ o.replied_at | dt }}</td>
+        <td>{{ o.deck_received_at | dt }}</td>
+        <td>{{ item.days_waiting if item.days_waiting is not none else "-" }}{% if item.follow_up_due %} <span class="badge badge-warn">Follow up</span>{% endif %}</td>
+        <td class="actions">
+          {% if o.status.value == "sent" %}
+            {{ m.post_button("/outreach/" ~ o.id ~ "/replied", "Mark replied", "/pipeline") }}
+          {% endif %}
+          {% if o.status.value in ("sent", "replied") %}
+            {{ m.post_button("/outreach/" ~ o.id ~ "/deck-received", "Deck received", "/pipeline") }}
+          {% endif %}
+          {{ m.close_form(o.id, "/pipeline", close_reasons) }}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Empty.</p>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

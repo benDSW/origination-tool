@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+<section class="narrow">
+  <h1>DSW Origination</h1>
+  {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="/login" class="stack">
+    {{ m.csrf() }}
+    <input type="hidden" name="next" value="{{ next }}">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" maxlength="1024" required autofocus>
+    <button type="submit" class="primary">Log in</button>
+  </form>
+</section>
+{% endblock %}

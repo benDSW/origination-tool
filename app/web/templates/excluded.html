@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Excluded{% endblock %}
+{% block content %}
+<h1>Excluded ({{ items | length }})</h1>
+<p class="muted">Founders filtered out by location or because they are already in Affinity. You can override an exclusion.</p>
+{% for item in items %}
+  {% set o = item.outreach %}
+  <article class="card" id="outreach-{{ o.id }}">
+    {{ m.founder_context(item.founder, o) }}
+    <p><strong>Reason:</strong> <span class="badge">{{ o.exclusion_reason | label }}</span> {{ o.exclusion_detail or "" }}</p>
+    <div class="actions">
+      {{ m.post_button("/outreach/" ~ o.id ~ "/draft-anyway", "Draft anyway", "/excluded", "primary") }}
+      <form method="post" action="/outreach/{{ o.id }}/close" class="inline">
+        {{ m.csrf() }}
+        <input type="hidden" name="next" value="/excluded">
+        <input type="hidden" name="reason" value="skipped">
+        <button type="submit" class="secondary">Close</button>
+      </form>
+    </div>
+  </article>
+{% else %}
+  <p class="muted">No exclusions.</p>
+{% endfor %}
+{% endblock %}

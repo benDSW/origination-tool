@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}New search{% endblock %}
+{% block content %}
+<p><a href="/searches">&larr; Searches</a></p>
+<h1>New search</h1>
+<p class="muted">The search is created on Evertrace, then registered here with the settings below.</p>
+{{ m.problems_list(problems) }}
+{% if vocab %}
+<form method="post" action="/searches/new" class="stack">
+  {{ m.csrf() }}
+  <label for="title">Title (max 50 characters)</label>
+  <input id="title" name="title" type="text" maxlength="50" required value="{{ form.title }}">
+
+  <div class="grid">
+  {% for fld in fields %}
+    <div>
+      <label for="f-{{ fld.name }}">{{ fld.label }}</label>
+      <select id="f-{{ fld.name }}" name="{{ fld.name }}" multiple size="8">
+      {% for opt in fld.options %}
+        <option value="{{ opt }}"{% if opt in fld.selected %} selected{% endif %}>{{ opt }}</option>
+      {% endfor %}
+      </select>
+    </div>
+  {% endfor %}
+  </div>
+
+  <label for="min_score">Minimum score</label>
+  <select id="min_score" name="min_score">
+    <option value="">Any</option>
+  {% for s in scores %}
+    <option value="{{ s }}"{% if form.min_score == s | string %} selected{% endif %}>{{ s }}</option>
+  {% endfor %}
+  </select>
+
+  <label for="city_include">Only these cities (comma separated, optional)</label>
+  <input id="city_include" name="city_include" type="text" maxlength="2000" value="{{ form.city_include }}">
+  <label for="city_exclude">Exclude these cities (comma separated, optional)</label>
+  <input id="city_exclude" name="city_exclude" type="text" maxlength="2000" value="{{ form.city_exclude }}">
+
+  <label for="location_policy">Location policy</label>
+  <select id="location_policy" name="location_policy">
+  {% for p in policies %}
+    <option value="{{ p.value }}"{% if p.value == form.location_policy %} selected{% endif %}>{{ p | label }}</option>
+  {% endfor %}
+  </select>
+
+  <label for="lookback_days">Lookback (days, 1-730)</label>
+  <input id="lookback_days" name="lookback_days" type="number" min="1" max="730" required value="{{ form.lookback_days }}">
+
+  <label><input type="checkbox" name="enabled" value="true"{% if form.enabled %} checked{% endif %}> Enable for the daily run</label>
+  <label><input type="checkbox" name="backfill" value="true"{% if form.backfill %} checked{% endif %}> Start a backfill run now</label>
+
+  <button type="submit" class="primary">Create search on Evertrace</button>
+</form>
+{% else %}
+<p>The Evertrace filter options could not be loaded, so the form is unavailable. Try again later.</p>
+{% endif %}
+{% endblock %}

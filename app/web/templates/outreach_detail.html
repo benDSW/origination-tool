@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ detail.founder.full_name }}{% endblock %}
+{% block content %}
+{% set o = detail.outreach %}
+{% set f = detail.founder %}
+{% set here = "/outreach/" ~ o.id %}
+<p><a href="/pipeline">&larr; Pipeline</a></p>
+<h1>{{ f.full_name }} <span class="badge status-{{ o.status.value }}">{{ o.status | label }}</span></h1>
+<article class="card">
+  {{ m.founder_context(f, o) }}
+  <dl class="facts">
+    <dt>Email</dt><dd>{{ o.email or "-" }}</dd>
+    {% if o.exclusion_reason %}<dt>Excluded</dt><dd>{{ o.exclusion_reason | label }}: {{ o.exclusion_detail or "" }}</dd>{% endif %}
+    {% if o.close_reason %}<dt>Closed</dt><dd>{{ o.close_reason | label }} ({{ o.closed_at | dt }})</dd>{% endif %}
+    <dt>Drafted</dt><dd>{{ o.drafted_at | dt }}</dd>
+    <dt>Sent</dt><dd>{{ o.sent_at | dt }}</dd>
+    <dt>Replied</dt><dd>{{ o.replied_at | dt }}</dd>
+    <dt>Deck received</dt><dd>{{ o.deck_received_at | dt }}</dd>
+    {% if detail.item.days_waiting is not none %}<dt>Days waiting</dt><dd>{{ detail.item.days_waiting }}{% if detail.item.follow_up_due %} <span class="badge badge-warn">Follow up</span>{% endif %}</dd>{% endif %}
+    {% if detail.rocketreach_lookup %}
+      {% set lk = detail.rocketreach_lookup %}
+      <dt>RocketReach</dt><dd>{{ lk.outcome | label }}{% if lk.grade %} (grade {{ lk.grade }}){% endif %}{% if lk.reason %}: {{ lk.reason }}{% endif %}, {{ lk.created_at | dt }}</dd>
+    {% endif %}
+  </dl>
+</article>
+
+{% if detail.draft %}
+<section class="card">
+  <h2>Draft</h2>
+  {{ m.copy_block(o.id, detail.draft) }}
+</section>
+{% endif %}
+
+<section class="actions">
+  {% if o.status.value == "drafted" %}
+    {{ m.post_button(here ~ "/sent", "Mark sent", here, "primary") }}
+    {{ m.post_button(here ~ "/discard-email", "Wrong email", here, "secondary") }}
+  {% endif %}
+  {% if o.status.value in ("drafted", "sent") %}
+    {{ m.post_button(here ~ "/replied", "Mark replied", here) }}
+  {% endif %}
+  {% if o.status.value in ("sent", "replied") %}
+    {{ m.post_button(here ~ "/deck-received", "Deck received", here) }}
+  {% endif %}
+  {% if o.status.value == "excluded" %}
+    {{ m.post_button(here ~ "/draft-anyway", "Draft anyway", here, "primary") }}
+  {% endif %}
+  {% if o.status.value in ("needs_email", "excluded") %}
+    <form method="post" action="{{ here }}/email" class="inline">
+      {{ m.csrf() }}
+      <input type="hidden" name="next" value="{{ here }}">
+      <label for="email-{{ o.id }}">Email</label>
+      <input id="email-{{ o.id }}" name="email" type="email" maxlength="254" required>
+      <button type="submit">Create draft</button>
+    </form>
+  {% endif %}
+  {% if o.status.value != "closed" %}
+    {{ m.close_form(o.id, here, close_reasons) }}
+  {% endif %}
+</section>
+
+<section>
+  <h2>Timeline</h2>
+  <ol class="timeline">
+    <li>{{ o.created_at | dt }}: discovered</li>
+  {% for e in detail.events %}
+    <li>{{ e.at | dt }}: {{ e.from_status | label }} &rarr; <strong>{{ e.to_status | label }}</strong>
+      <span class="muted">({{ e.source | label }})</span>{% if e.note %} - {{ e.note }}{% endif %}</li>
+  {% endfor %}
+  </ol>
+</section>
+
+<section class="card danger">
+  <h2>Forget founder</h2>
+  <p>Permanently deletes this founder, their outreach, timeline and email lookups (UK GDPR erasure). This cannot be undone.</p>
+  <form method="post" action="{{ here }}/forget" class="stack">
+    {{ m.csrf() }}
+    <label><input type="checkbox" name="confirm" value="yes" required> I understand this permanently deletes {{ f.full_name }}</label>
+    <button type="submit" class="danger">Forget founder</button>
+  </form>
+</section>
+{% endblock %}

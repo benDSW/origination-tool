@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Needs email{% endblock %}
+{% block content %}
+<h1>Needs email ({{ items | length }})</h1>
+<p class="muted">No usable address was found automatically. Enter one to create the draft.</p>
+{% for item in items %}
+  {% set o = item.outreach %}
+  <article class="card" id="outreach-{{ o.id }}">
+    {{ m.founder_context(item.founder, o) }}
+    <div class="actions">
+      <form method="post" action="/outreach/{{ o.id }}/email" class="inline">
+        {{ m.csrf() }}
+        <input type="hidden" name="next" value="/needs-email">
+        <label for="email-{{ o.id }}">Email</label>
+        <input id="email-{{ o.id }}" name="email" type="email" maxlength="254" required placeholder="name@company.co.uk">
+        <button type="submit" class="primary">Create draft</button>
+      </form>
+      <form method="post" action="/outreach/{{ o.id }}/close" class="inline">
+        {{ m.csrf() }}
+        <input type="hidden" name="next" value="/needs-email">
+        <input type="hidden" name="reason" value="skipped">
+        <button type="submit" class="secondary">Skip</button>
+      </form>
+    </div>
+  </article>
+{% else %}
+  <p class="muted">Nobody is waiting for an email address.</p>
+{% endfor %}
+{% endblock %}

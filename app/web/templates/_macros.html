@@ -1,0 +1,77 @@
+{% macro csrf() %}<input type="hidden" name="{{ CSRF_FIELD }}" value="{{ csrf_token }}">{% endmacro %}
+
+{% macro post_button(action, text, next=None, cls="") %}
+<form method="post" action="{{ action }}" class="inline">
+  {{ csrf() }}
+  {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+  <button type="submit"{% if cls %} class="{{ cls }}"{% endif %}>{{ text }}</button>
+</form>
+{% endmacro %}
+
+{% macro close_form(outreach_id, next, reasons) %}
+<form method="post" action="/outreach/{{ outreach_id }}/close" class="inline">
+  {{ csrf() }}
+  <input type="hidden" name="next" value="{{ next }}">
+  <label class="sr-only" for="reason-{{ outreach_id }}">Close reason</label>
+  <select name="reason" id="reason-{{ outreach_id }}">
+  {% for r in reasons %}
+    <option value="{{ r.value }}">{{ r | label }}</option>
+  {% endfor %}
+  </select>
+  <button type="submit" class="secondary">Close</button>
+</form>
+{% endmacro %}
+
+{% macro founder_context(founder, outreach=None) %}
+<div class="founder">
+  <h3><a href="/outreach/{{ outreach.id if outreach else '' }}">{{ founder.full_name }}</a>
+    {% if founder.company_name %}<span class="muted">- {{ founder.company_name }}</span>{% endif %}
+  </h3>
+  <dl class="facts">
+    <dt>Location</dt><dd>{{ founder.city or "-" }}, {{ founder.country or "-" }}</dd>
+    <dt>Signal</dt><dd>{{ founder.signal_type or "-" }}{% if founder.score is not none %} (score {{ founder.score }}){% endif %}</dd>
+    <dt>Discovered</dt><dd>{{ founder.discovered_at | dt }}</dd>
+    {% if outreach and outreach.email_source %}<dt>Email source</dt><dd><span class="badge badge-{{ outreach.email_source.value }}">{{ outreach.email_source | label }}</span></dd>{% endif %}
+  </dl>
+  {% if founder.summary %}<p class="summary">{{ founder.summary }}</p>{% endif %}
+  <p class="links">
+    {% set li = linkedin_link(founder) %}
+    {% set ch = companies_house_link(founder) %}
+    {% if li %}<a href="{{ li }}" target="_blank" rel="noopener noreferrer">LinkedIn</a>{% endif %}
+    {% if ch %}<a href="{{ ch }}" target="_blank" rel="noopener noreferrer">Companies House</a>{% endif %}
+  </p>
+</div>
+{% endmacro %}
+
+{% macro copy_block(item_id, draft) %}
+<div class="copy-block">
+  <label for="to-{{ item_id }}">To</label>
+  <div class="copy-row">
+    <input id="to-{{ item_id }}" type="text" readonly value="{{ draft.to }}">
+    <button type="button" class="copy" data-copy-target="to-{{ item_id }}">Copy</button>
+  </div>
+  <label for="subject-{{ item_id }}">Subject</label>
+  <div class="copy-row">
+    <input id="subject-{{ item_id }}" type="text" readonly value="{{ draft.subject }}">
+    <button type="button" class="copy" data-copy-target="subject-{{ item_id }}">Copy</button>
+  </div>
+  <label for="body-{{ item_id }}">Body</label>
+  <div class="copy-row">
+    <textarea id="body-{{ item_id }}" rows="12" readonly>
+{{ draft.body }}</textarea>
+    <button type="button" class="copy" data-copy-target="body-{{ item_id }}">Copy</button>
+  </div>
+  <textarea id="all-{{ item_id }}" class="visually-hidden" readonly tabindex="-1" aria-hidden="true" data-copy-all>
+{{ draft.as_text() }}</textarea>
+  <button type="button" class="copy primary" data-copy-target="all-{{ item_id }}">Copy all</button>
+</div>
+{% endmacro %}
+
+{% macro problems_list(problems) %}
+{% if problems %}
+<div class="flash flash-error" role="alert">
+  <p>Please fix the following:</p>
+  <ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+{% endmacro %}

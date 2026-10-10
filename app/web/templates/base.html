@@ -1,0 +1,37 @@
+{% import "_macros.html" as m with context %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Dashboard{% endblock %} - DSW Origination</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+{% if authenticated %}
+<header class="topbar">
+  <a class="brand" href="/">DSW Origination</a>
+  <nav aria-label="Main">
+  {% for href, text in [("/", "Overview"), ("/drafts", "Drafts"), ("/needs-email", "Needs email"), ("/pipeline", "Pipeline"), ("/excluded", "Excluded"), ("/searches", "Searches"), ("/template", "Template"), ("/runs", "Runs")] %}
+    <a href="{{ href }}"{% if path == href %} aria-current="page"{% endif %}>{{ text }}</a>
+  {% endfor %}
+  </nav>
+  <form method="post" action="/logout" class="inline">
+    {{ m.csrf() }}
+    <button type="submit" class="link">Log out</button>
+  </form>
+  <form method="post" action="/logout/all" class="inline">
+    {{ m.csrf() }}
+    <button type="submit" class="link" title="End every dashboard session, on every device">Log out everywhere</button>
+  </form>
+</header>
+{% endif %}
+<main>
+{% for f in flashes %}
+  <div class="flash flash-{{ f.level }}" role="status">{{ f.text }}</div>
+{% endfor %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

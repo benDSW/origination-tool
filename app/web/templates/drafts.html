@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Drafts{% endblock %}
+{% block content %}
+<h1>Drafts ({{ items | length }})</h1>
+<p class="muted">Copy each draft into Outlook and send it yourself, then click Mark sent.</p>
+{% for item in items %}
+  {% set o = item.outreach %}
+  <article class="card draft" id="outreach-{{ o.id }}">
+    {{ m.founder_context(item.founder, o) }}
+    {% set draft = item.draft %}
+    {% if draft %}
+      {{ m.copy_block(o.id, draft) }}
+    {% else %}
+      <p class="flash flash-error">This draft has no content; use Wrong email to re-enter the address.</p>
+    {% endif %}
+    <p class="muted">Drafted {{ o.drafted_at | dt }}{% if item.days_waiting is not none %} ({{ item.days_waiting }} day(s) ago){% endif %}, template v{{ o.template_version or "-" }}.</p>
+    <div class="actions">
+      {{ m.post_button("/outreach/" ~ o.id ~ "/sent", "Mark sent", "/drafts", "primary") }}
+      <form method="post" action="/outreach/{{ o.id }}/close" class="inline">
+        {{ m.csrf() }}
+        <input type="hidden" name="next" value="/drafts">
+        <input type="hidden" name="reason" value="skipped">
+        <button type="submit" class="secondary">Skip</button>
+      </form>
+      {{ m.post_button("/outreach/" ~ o.id ~ "/discard-email", "Wrong email", "/drafts", "secondary") }}
+    </div>
+  </article>
+{% else %}
+  <p class="muted">No drafts waiting.</p>
+{% endfor %}
+{% endblock %}

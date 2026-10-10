@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Runs{% endblock %}
+{% block content %}
+<h1>Runs</h1>
+{% if runs %}
+<div class="scroll">
+<table>
+  <thead><tr><th>#</th><th>Trigger</th><th>State</th><th>Started</th><th>Finished</th><th>Searches</th><th>Signals</th><th>New</th><th>Excl. location</th><th>Excl. Affinity</th><th>Drafted</th><th>Needs email</th><th>RocketReach</th><th>Tracking</th><th>Errors</th></tr></thead>
+  <tbody>
+  {% for r in runs %}
+    <tr id="run-{{ r.id }}">
+      <td>{{ r.id }}</td>
+      <td>{{ r.trigger | label }}{% if r.dry_run %} (dry run){% endif %}</td>
+      <td><span class="badge state-{{ r.state.value }}">{{ r.state | label }}</span></td>
+      <td>{{ r.started_at | dt }}</td>
+      <td>{{ r.finished_at | dt }}</td>
+      <td>{{ r.counts.searches }}</td>
+      <td>{{ r.counts.signals_seen }}</td>
+      <td>{{ r.counts.founders_new }}</td>
+      <td>{{ r.counts.excluded_location }}</td>
+      <td>{{ r.counts.excluded_affinity }}</td>
+      <td>{{ r.counts.drafted }}</td>
+      <td>{{ r.counts.needs_email }}</td>
+      <td>{{ r.counts.rocketreach_lookups }}</td>
+      <td>{{ r.counts.tracking_updates }}</td>
+      <td>{{ r.counts.errors }}
+        {% if r.errors %}<details><summary>details</summary><ul>{% for e in r.errors %}<li>{{ e }}</li>{% endfor %}</ul></details>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">No runs yet.</p>
+{% endif %}
+{% endblock %}
