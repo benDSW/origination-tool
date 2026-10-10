@@ -162,3 +162,17 @@ get "try again in a moment" (HTTP 429) instead of queueing.
 - **Backups**: enable Railway's Postgres backups. The database holds all pipeline state.
 - **Rollback**: redeploy a previous deployment from Railway. If the rollback crosses a migration,
   downgrade first with `python -m alembic downgrade -1` from a web-service shell.
+
+## 7. Running locally on Windows instead (interim)
+
+No code changes; the Railway config files are simply ignored.
+
+1. `.env` needs the API keys plus `SESSION_SECRET`, `SUPPRESSION_SECRET`, `ADMIN_PASSWORD_HASH`
+   (`uv run python -m app.jobs.hash_password`) and an **absolute** SQLite path, e.g.
+   `DATABASE_URL=sqlite:///C:/Users/<you>/Downloads/Origination Tool/data/origination.db`,
+   so the scheduled job and the dashboard share one database whatever directory they start in.
+2. Double-click `scripts\start-dashboard.cmd` and open http://127.0.0.1:8000 (this computer only).
+3. Daily run: Windows Task Scheduler runs `scripts\daily-run.cmd` (output in `logs\daily.log`).
+   It only runs while the PC is on; use **Run now** in the dashboard otherwise.
+4. Moving to Railway later: copy the SQLite pipeline state into Postgres with a one-off script
+   (not yet written) so founders already contacted are not drafted again.
