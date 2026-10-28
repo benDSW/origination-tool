@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, Form, Request
 from starlette.responses import Response
 
 from app.domain.models import OutreachStatus, RunTrigger
 from app.services import Services
+from app.web.auth import MAX_NEXT_LEN, safe_next
 from app.web.deps import RunHistoryDep, ServicesDep
 from app.web.rendering import redirect, render
 
@@ -47,15 +49,20 @@ def start_run(request: Request, services: ServicesDep, background: BackgroundTas
 
 
 @router.post("/tracking/sync")
-def sync_tracking(request: Request, services: ServicesDep) -> Response:
-    result = services.origination.sync_tracking()
+def sync_tracking(
+    request: Request,
+    services: ServicesDep,
+    next_url: Annotated[str, Form(alias="next", max_length=MAX_NEXT_LEN)] = "/",
+) -> Response:
+    target = safe_next(next_url, "/")
+    result = services.origination.sync_tracking(force=True)
     if result is None:
-        return redirect(request, "/", "A run is in progress; tracking runs as part of it.", "info")
+        return redirect(request, target, "A run is in progress; tracking runs as part of it.", "info")
     message = f"Tracking checked {result.checked} founder(s): {result.updates} status update(s)."
     if result.errors:
         first = result.errors[0][:200]
-        return redirect(request, "/", f"{message} {len(result.errors)} error(s), e.g. {first}", "error")
-    return redirect(request, "/", message, "success")
+        return redirect(request, target, f"{message} {len(result.errors)} error(s), e.g. {first}", "error")
+    return redirect(request, target, message, "success")
 
 
 @router.get("/runs")

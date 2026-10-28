@@ -122,3 +122,9 @@ def test_run_history_reads_the_store(world: World) -> None:
     world.services.origination.run(RunTrigger.MANUAL)
     runs = main.run_history(world.services, 50)
     assert [r.trigger for r in runs] == [RunTrigger.MANUAL, RunTrigger.CRON]
+
+
+def test_tracking_interval_setting_reaches_the_dashboard() -> None:
+    app = main.create_app(settings=make_settings(tracking_interval_minutes=45))
+    assert app.state.config.tracking_interval_seconds == 45 * 60
+    assert main.create_app(settings=make_settings()).state.config.tracking_interval_seconds == 0

@@ -65,8 +65,18 @@ def excluded(request: Request, services: ServicesDep) -> Response:
 @router.get("/pipeline")
 def pipeline(request: Request, services: ServicesDep) -> Response:
     board = services.outreach.pipeline()
-    columns = [(status, board.columns.get(status, [])) for status in (S.SENT, S.REPLIED, S.DECK_RECEIVED)]
-    return render(request, "pipeline.html", {"columns": columns, "close_reasons": CLOSE_REASONS})
+    columns = [(status, board.columns.get(status, [])) for status in (S.REPLIED, S.SENT, S.DECK_RECEIVED)]
+    interval = request.app.state.config.tracking_interval_seconds
+    return render(
+        request,
+        "pipeline.html",
+        {
+            "columns": columns,
+            "close_reasons": CLOSE_REASONS,
+            "last_checked_at": board.last_checked_at,
+            "tracking_interval_minutes": interval // 60 if interval else None,
+        },
+    )
 
 
 @router.get("/outreach/{outreach_id:int}")

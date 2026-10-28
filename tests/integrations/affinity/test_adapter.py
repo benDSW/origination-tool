@@ -450,3 +450,53 @@ def test_clock_is_used_for_end_time(router: respx.MockRouter, client: AffinityCl
     adapter.email_interactions(FOUNDER, utc(2025, 12, 1))
     assert route.calls.last.request.url.params["end_time"] == "2026-01-02T03:04:05Z"
     assert fixed_clock() == NOW
+
+
+def test_reply_from_another_address_of_the_same_person_is_inbound(router: respx.MockRouter, adapter) -> None:
+    mock_person(router, person(42, FOUNDER))
+    other_address = {"id": 42, "primary_email": "jo@personal.example"}
+    stranger_same_name = {"id": 43, "primary_email": "jo@personal.example"}
+    mock_interactions(
+        router,
+        {
+            "emails": [
+                email("2026-09-02T10:00:00Z", DSW_SENDER),
+                email("2026-09-03T10:00:00Z", other_address),
+                email("2026-09-04T10:00:00Z", stranger_same_name),
+                email("2026-09-05T10:00:00Z", {"id": True, "primary_email": "x@personal.example"}),
+            ]
+        },
+    )
+    result = adapter.email_interactions(FOUNDER, utc(2026, 9, 1))
+    assert [i.direction for i in result] == [InteractionDirection.OUTBOUND, InteractionDirection.INBOUND]
+
+
+def test_person_id_is_cached_across_syncs(router: respx.MockRouter, adapter: AffinityAdapter) -> None:
+    persons = mock_person(router, person(42, FOUNDER))
+    router.get(f"{V1}/interactions").respond(json={"emails": []})
+    adapter.email_interactions(FOUNDER, utc(2026, 9, 1))
+    adapter.email_interactions(FOUNDER.upper(), utc(2026, 9, 1))
+    assert persons.call_count == 1
+
+
+def test_unknown_person_is_rechecked_only_after_the_miss_ttl(router: respx.MockRouter, client) -> None:
+    now = [NOW]
+    adapter = AffinityAdapter(client, list_ids=[], dsw_email_domains=DSW_DOMAINS, clock=lambda: now[0])
+    persons = router.get(f"{V1}/persons").mock(
+        side_effect=[
+            httpx.Response(200, json={"persons": []}),
+            httpx.Response(200, json={"persons": [person(42, FOUNDER)]}),
+        ]
+    )
+    interactions = router.get(f"{V1}/interactions").respond(json={"emails": []})
+
+    adapter.email_interactions(FOUNDER, utc(2026, 9, 1))
+    now[0] = NOW + timedelta(hours=5)
+    adapter.email_interactions(FOUNDER, utc(2026, 9, 1))
+    assert persons.call_count == 1  # the miss is remembered
+    assert not interactions.called
+
+    now[0] = NOW + timedelta(hours=7)
+    adapter.email_interactions(FOUNDER, utc(2026, 9, 1))
+    assert persons.call_count == 2  # Affinity now knows the person
+    assert interactions.called

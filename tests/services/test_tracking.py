@@ -173,3 +173,33 @@ def test_events_before_the_draft_are_ignored(store: SqlStore, clock: FakeClock) 
 
     assert result.updates == 0
     assert store.get_outreach(o.id or 0).status is S.DRAFTED
+
+
+def _age(store: SqlStore, o: OutreachRecord, *, sent_days_ago: float, tracked_hours_ago: float | None):
+    o.sent_at = NOW - timedelta(days=sent_days_ago)
+    o.last_tracked_at = NOW - timedelta(hours=tracked_hours_ago) if tracked_hours_ago is not None else None
+    return store.save_outreach(o)
+
+
+def test_old_outreach_is_rechecked_at_most_daily_unless_forced(store: SqlStore, clock: FakeClock) -> None:
+    recent = _age(store, _outreach(store, 1, S.SENT, "a@co1.example"), sent_days_ago=5, tracked_hours_ago=1)
+    old_fresh = _age(
+        store, _outreach(store, 2, S.SENT, "b@co2.example"), sent_days_ago=30, tracked_hours_ago=2
+    )
+    old_stale = _age(
+        store, _outreach(store, 3, S.SENT, "c@co3.example"), sent_days_ago=30, tracked_hours_ago=25
+    )
+    old_never = _age(
+        store, _outreach(store, 4, S.SENT, "d@co4.example"), sent_days_ago=30, tracked_hours_ago=None
+    )
+    inbox = FakeInbox()
+
+    result = TrackingService(store, inbox, clock).sync()
+
+    assert (result.checked, result.deferred) == (3, 1)
+    assert store.get_outreach(old_fresh.id or 0).last_tracked_at == NOW - timedelta(hours=2)
+    for o in (recent, old_stale, old_never):
+        assert store.get_outreach(o.id or 0).last_tracked_at == NOW
+
+    forced = TrackingService(store, inbox, clock).sync(force=True)
+    assert (forced.checked, forced.deferred) == (4, 0)

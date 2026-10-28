@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 # Affinity rejects interaction windows longer than one year; keep a day's margin.
 MAX_INTERACTION_WINDOW = timedelta(days=364)
 EMAIL_INTERACTION_TYPE = 3
+# Person ids are cached for the process lifetime (a long-running dashboard syncs
+# tracking every hour); "not in Affinity" is re-checked after this long, since a
+# person appears as soon as Affinity syncs the first email to them.
+PERSON_MISS_TTL = timedelta(hours=6)
 _MAX_SUBJECT_LEN = 300
 
 Clock = Callable[[], datetime]
@@ -106,6 +110,8 @@ class AffinityAdapter:
         if not self._dsw_domains:
             raise ValueError("At least one DSW email domain is required to classify email direction")
         self._clock = clock
+        self._person_ids: dict[str, int] = {}
+        self._person_misses: dict[str, datetime] = {}
 
     @classmethod
     def from_api_key(
@@ -226,27 +232,39 @@ class AffinityAdapter:
             label="interactions",
             items_key="emails",
         ):
-            interaction = self._to_interaction(item, address, start)
+            interaction = self._to_interaction(item, address, person_id, start)
             if interaction is not None:
                 interactions.append(interaction)
         interactions.sort(key=lambda i: i.occurred_at)
         return interactions
 
     def _find_person_id(self, address: str) -> int | None:
-        """Exact (case-insensitive) address match; Affinity's ``term`` search is fuzzy."""
+        """Exact (case-insensitive) address match; Affinity's ``term`` search is fuzzy.
+        Cached: see :data:`PERSON_MISS_TTL`."""
+        if address in self._person_ids:
+            return self._person_ids[address]
+        now = _as_utc(self._clock())
+        missed_at = self._person_misses.get(address)
+        if missed_at is not None and now - missed_at < PERSON_MISS_TTL:
+            return None
         data = self._client.get_v1("/persons", [("term", address), ("page_size", 10)], label="persons")
         for person in _dicts(data.get("persons")):
             if address in _person_addresses(person):
-                person_id = person.get("id")
-                if isinstance(person_id, int) and not isinstance(person_id, bool):
+                person_id = _int_id(person.get("id"))
+                if person_id is not None:
+                    self._person_ids[address] = person_id
+                    self._person_misses.pop(address, None)
                     return person_id
+        self._person_misses[address] = now
         return None
 
-    def _to_interaction(self, item: dict[str, Any], founder: str, start: datetime) -> EmailInteraction | None:
+    def _to_interaction(
+        self, item: dict[str, Any], founder: str, founder_id: int, start: datetime
+    ) -> EmailInteraction | None:
         occurred_at = _parse_datetime(item.get("date"))
         if occurred_at is None or occurred_at < start:
             return None
-        direction = self._direction(item.get("from"), founder)
+        direction = self._direction(item.get("from"), founder, founder_id)
         if direction is None:
             return None
         subject = _str(item.get("subject"))
@@ -256,15 +274,21 @@ class AffinityAdapter:
             subject=subject[:_MAX_SUBJECT_LEN] if subject else None,
         )
 
-    def _direction(self, sender: Any, founder: str) -> InteractionDirection | None:
+    def _direction(self, sender: Any, founder: str, founder_id: int) -> InteractionDirection | None:
         """Classify by who sent it. Affinity's integer ``direction`` is not trusted:
-        it is relative to whichever user's mailbox synced the email."""
+        it is relative to whichever user's mailbox synced the email. A reply from
+        another of the founder's addresses still counts: it is the same person."""
         addresses = _person_addresses(sender)
         if any(_domain_of(a) in self._dsw_domains for a in addresses):
             return InteractionDirection.OUTBOUND
-        if founder in addresses:
+        sender_id = _int_id(sender.get("id")) if isinstance(sender, dict) else None
+        if founder in addresses or (sender_id is not None and sender_id == founder_id):
             return InteractionDirection.INBOUND
         return None  # a third party (e.g. a CC'd co-investor) - irrelevant to tracking
+
+
+def _int_id(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _field_items(value: dict[str, Any]) -> list[dict[str, Any]]:

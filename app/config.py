@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     affinity_applicant_list_id: int = 310945
     dsw_email_domains: Annotated[tuple[str, ...], NoDecode] = ("dsw.vc",)
     follow_up_after_days: int = Field(default=14, ge=1, le=90)
+    # The dashboard checks Affinity for replies this often while it runs (0 = off).
+    tracking_interval_minutes: int = Field(default=60, ge=0, le=24 * 60)
     run_lock_ttl_seconds: int = 60 * 60
 
     @field_validator("dsw_email_domains", mode="before")

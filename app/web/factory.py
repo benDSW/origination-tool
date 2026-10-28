@@ -7,6 +7,8 @@ knows about ``Settings`` and the container.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 import mimetypes
 from collections.abc import AsyncIterator, Callable
@@ -21,6 +23,7 @@ from starlette.staticfiles import StaticFiles
 from app.services import Services
 from app.services.clock import utc_now
 from app.web.auth import Authenticator, LoginRateLimiter, VerificationGate
+from app.web.background import tracking_loop
 from app.web.config import WebConfig
 from app.web.csrf import csrf_protect
 from app.web.deps import Clock, RunHistory, latest_run_only
@@ -64,9 +67,18 @@ def create_web_app(
         if app.state.services is None and services_factory is not None:
             built = await run_in_threadpool(services_factory)
             app.state.services = built
+        tracker: asyncio.Task[None] | None = None
+        if config.tracking_interval_seconds > 0:
+            tracker = asyncio.create_task(
+                tracking_loop(lambda: app.state.services, config.tracking_interval_seconds)
+            )
         try:
             yield
         finally:
+            if tracker is not None:
+                tracker.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await tracker
             if built is not None:
                 built.close()
                 app.state.services = None

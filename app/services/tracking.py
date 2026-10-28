@@ -4,6 +4,10 @@ The tracker only ever moves outreach *forward* along the state machine, and only
 from the states where the evidence makes sense. Manual dashboard buttons always
 work as well; if the user already clicked "Sent", a later SENT event is simply
 ignored.
+
+The dashboard syncs on a timer, so to keep CRM API usage modest, outreach that
+was sent (or drafted) more than ``RECENT_WINDOW`` ago is re-checked at most once
+per ``STALE_RECHECK``. ``sync(force=True)`` (the "Check now" button) checks all.
 """
 
 from __future__ import annotations
@@ -11,7 +15,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.domain.models import (
     EventSource,
@@ -37,6 +41,8 @@ _MOVES: dict[InboxEventKind, tuple[frozenset[OutreachStatus], OutreachStatus]] =
 }
 
 MAX_TRACKED = 10_000
+RECENT_WINDOW = timedelta(days=21)
+STALE_RECHECK = timedelta(hours=24)
 
 
 @dataclass
@@ -45,6 +51,7 @@ class TrackingResult:
 
     updates: int = 0
     checked: int = 0
+    deferred: int = 0  # older outreach checked recently enough to skip this time
     errors: list[str] = field(default_factory=list)
 
 
@@ -54,13 +61,17 @@ class TrackingService:
         self._inbox = inbox
         self._clock = clock
 
-    def sync(self) -> TrackingResult:
-        """Check every DRAFTED / SENT outreach that has an address. One failing
-        founder never stops the loop."""
+    def sync(self, *, force: bool = False) -> TrackingResult:
+        """Check every DRAFTED / SENT outreach that has an address (older ones at
+        most daily unless ``force``). One failing founder never stops the loop."""
         result = TrackingResult()
+        now = self._clock()
         for view in self._store.list_outreach(TRACKABLE_STATUSES, limit=MAX_TRACKED):
             outreach = view.outreach
             if not outreach.email or outreach.id is None:
+                continue
+            if not force and _can_wait(outreach, now):
+                result.deferred += 1
                 continue
             result.checked += 1
             try:
@@ -103,3 +114,10 @@ class TrackingService:
             self._store.save_outreach(outreach, status_event)
             changes += 1
         return changes
+
+
+def _can_wait(outreach: OutreachRecord, now: datetime) -> bool:
+    """Old outreach that was already checked within ``STALE_RECHECK``."""
+    started = outreach.sent_at or outreach.drafted_at or outreach.created_at
+    last = outreach.last_tracked_at
+    return last is not None and now - started > RECENT_WINDOW and now - last < STALE_RECHECK

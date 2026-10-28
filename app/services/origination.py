@@ -234,14 +234,15 @@ class OriginationService:
         finally:
             lease.release()
 
-    def sync_tracking(self) -> TrackingResult | None:
-        """Run tracking alone (dashboard button / CLI) under the same lock as a run,
-        so the two never move the same outreach concurrently. None if busy."""
+    def sync_tracking(self, *, force: bool = False) -> TrackingResult | None:
+        """Run tracking alone (dashboard timer and button / CLI) under the same lock
+        as a run, so the two never move the same outreach concurrently. None if busy.
+        ``force`` re-checks older outreach too (see ``TrackingService.sync``)."""
         lease = _LockLease(self._store, RUN_LOCK, self._clock, self._lock_ttl)
         if not lease.acquire():
             return None
         try:
-            return self._tracking.sync()
+            return self._tracking.sync(force=force)
         finally:
             lease.release()
 
@@ -260,7 +261,7 @@ class OriginationService:
             self._rocketreach_backlog(ctx, self._finder)
         if not ctx.dry_run:
             ctx.heartbeat(force=True)
-            result = self._tracking.sync()
+            result = self._tracking.sync(force=True)  # one full check per daily run
             ctx.counts.tracking_updates += result.updates
             ctx.progress = ctx.progress or result.updates > 0 or result.checked > len(result.errors)
             for message in result.errors:
