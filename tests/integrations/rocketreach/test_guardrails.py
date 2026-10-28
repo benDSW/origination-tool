@@ -245,32 +245,62 @@ def test_subdomain_counts_as_company_domain() -> None:
     assert result.email == "alex@uk.co1.example"
 
 
-def test_falls_back_to_any_professional_then_personal() -> None:
+def test_former_employer_address_ranks_below_personal() -> None:
+    """A professional address on another domain is usually an old job's dead inbox."""
     result = select_email(
-        [e("alex.t@mail.example", kind="personal"), e("alex@othercorp.example")], "co1.example"
+        [e("alex@bigpharma.example"), e("alex.t@mail.example", kind="personal")], "co1.example"
     )
-    assert result.email == "alex@othercorp.example"
-    assert result.reason == "professional email"
+    assert result.email == "alex.t@mail.example"
+    assert result.reason == "personal email"
+    assert [c.email for c in result.candidates] == ["alex.t@mail.example", "alex@bigpharma.example"]
+    assert result.candidates[1].reason == "professional email on another domain"
 
-    personal = select_email([e("alex.t@mail.example", kind="personal")], "co1.example")
-    assert personal.outcome is LookupOutcome.FOUND
-    assert personal.email == "alex.t@mail.example"
-    assert personal.reason == "personal email"
+    only_old = select_email([e("alex@bigpharma.example")], "co1.example")
+    assert only_old.outcome is LookupOutcome.FOUND
+    assert only_old.email == "alex@bigpharma.example"
 
 
-def test_without_company_domain_professional_wins() -> None:
-    result = select_email([e("alex.t@mail.example", kind="personal"), e("alex@othercorp.example")], None)
-    assert result.email == "alex@othercorp.example"
+def test_without_company_domain_personal_wins() -> None:
+    result = select_email([e("alex@othercorp.example"), e("alex.t@mail.example", kind="personal")], None)
+    assert result.email == "alex.t@mail.example"
+    assert result.candidates[1].reason == "professional email (company domain unknown)"
 
 
 def test_unknown_type_ordering() -> None:
-    on_domain = select_email([e("alex@othercorp.example"), e("alex@co1.example", kind=None)], "co1.example")
+    on_domain = select_email(
+        [e("alex.t@mail.example", kind="personal"), e("alex@co1.example", kind=None)], "co1.example"
+    )
     assert on_domain.email == "alex@co1.example"
     assert on_domain.reason == "email on the company domain"
 
-    unknown = select_email([e("alex.t@mail.example", kind="personal"), e("x@y.example", kind=None)], None)
+    unknown = select_email([e("alex@othercorp.example"), e("x@y.example", kind=None)], None)
     assert unknown.email == "x@y.example"
     assert unknown.reason == "email of unknown type"
+
+    personal_first = select_email(
+        [e("x@y.example", kind=None), e("alex.t@mail.example", kind="personal")], None
+    )
+    assert personal_first.email == "alex.t@mail.example"
+
+
+def test_every_verified_address_kept_best_first() -> None:
+    result = select_email(
+        [
+            e("alex@bigpharma.example", grade="A-", smtp=None),
+            e("bad@co1.example", smtp="invalid"),
+            e("alex.t@mail.example", kind="personal", grade=None),
+            e("alex@co1.example"),
+            e("weak@co1.example", grade="B", smtp="inconclusive"),
+        ],
+        "co1.example",
+    )
+    assert [(c.email, c.grade, c.smtp_valid) for c in result.candidates] == [
+        ("alex@co1.example", "A", True),
+        ("alex.t@mail.example", None, True),
+        ("alex@bigpharma.example", "A-", False),
+    ]
+    assert result.email == result.candidates[0].email
+    assert result.reason == result.candidates[0].reason
 
 
 def test_within_tier_prefers_better_grade_then_order() -> None:
@@ -298,6 +328,7 @@ def test_drops_invalid_and_f_grade_even_on_company_domain() -> None:
         "co1.example",
     )
     assert result.email == "ok@othercorp.example"
+    assert [c.email for c in result.candidates] == ["ok@othercorp.example"]
 
 
 def test_none_left_is_not_found() -> None:
@@ -308,6 +339,7 @@ def test_none_left_is_not_found() -> None:
     assert result.outcome is LookupOutcome.NOT_FOUND
     assert result.reason == NO_VERIFIED_EMAIL
     assert result.email is None
+    assert result.candidates == ()
     assert select_email([], None).outcome is LookupOutcome.NOT_FOUND
 
 

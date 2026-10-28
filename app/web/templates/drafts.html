@@ -9,6 +9,7 @@
   {% set o = item.outreach %}
   <article class="card draft" id="outreach-{{ o.id }}" data-search-text="{{ m.search_text(item.founder) }}">
     {{ m.founder_context(item.founder, o) }}
+    {{ m.email_options(item, "/drafts#outreach-" ~ o.id) }}
     {% set draft = item.draft %}
     {% if draft %}
       {{ m.copy_block(o.id, draft) }}

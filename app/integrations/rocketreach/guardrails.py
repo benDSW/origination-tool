@@ -9,8 +9,11 @@ guardrails"):
 3. Only A/A- graded or SMTP-valid emails are candidates; SMTP-invalid and
    F-graded addresses are always dropped; every address must survive the
    domain's header-injection-safe ``normalise_email``.
-4. Prefer a professional address on the company's own domain, then any
-   professional address, then a personal one.
+4. Prefer an address on the company's own domain, then a personal one, then
+   one of unknown type, and only then a professional address on another domain
+   (usually a former employer's inbox that nobody reads any more). Every
+   address that passes rule 3 is kept, best first, so the dashboard can offer
+   the alternatives.
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
-from app.domain.models import EmailLookupResult, LookupOutcome
+from app.domain.models import EmailCandidate, EmailLookupResult, LookupOutcome
 from app.domain.templating import normalise_email
 
 SLUG_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.%-]{1,99}$")
@@ -180,6 +183,7 @@ def domain_matches(email: str, company_domain: str | None) -> bool:
 class _Candidate:
     email: str
     grade: str | None
+    smtp_valid: bool
     tier: int
     reason: str
     grade_rank: int
@@ -192,15 +196,20 @@ def _tier(entry: ProviderEmail, email: str, company_domain: str | None) -> tuple
         return 0, "professional email on the company domain"
     if entry.type is None and on_domain:
         return 1, "email on the company domain"
-    if entry.type == "professional":
-        return 2, "professional email"
     if entry.type == "personal":
-        return 4, "personal email"
+        return 2, "personal email"
+    if entry.type == "professional":
+        if normalise_domain(company_domain) is None:
+            return 4, "professional email (company domain unknown)"
+        return 4, "professional email on another domain"
     return 3, "email of unknown type"
 
 
 def select_email(emails: Sequence[ProviderEmail], company_domain: str | None) -> EmailLookupResult:
-    """Pick the best acceptable address, or NOT_FOUND when none survives the filters."""
+    """Pick the best acceptable address, or NOT_FOUND when none survives the filters.
+
+    Every acceptable address is returned in ``candidates``, best first.
+    """
     candidates: list[_Candidate] = []
     seen: set[str] = set()
     for position, entry in enumerate(emails):
@@ -215,6 +224,7 @@ def select_email(emails: Sequence[ProviderEmail], company_domain: str | None) ->
             _Candidate(
                 email=email,
                 grade=entry.grade,
+                smtp_valid=entry.smtp_valid == "valid",
                 tier=tier,
                 reason=reason,
                 grade_rank=_GRADE_RANK.get(entry.grade or "", 2),
@@ -223,9 +233,17 @@ def select_email(emails: Sequence[ProviderEmail], company_domain: str | None) ->
         )
     if not candidates:
         return EmailLookupResult(outcome=LookupOutcome.NOT_FOUND, reason=NO_VERIFIED_EMAIL)
-    best = min(candidates, key=lambda c: (c.tier, c.grade_rank, c.position))
+    ranked = sorted(candidates, key=lambda c: (c.tier, c.grade_rank, c.position))
+    best = ranked[0]
     return EmailLookupResult(
-        outcome=LookupOutcome.FOUND, email=best.email, grade=best.grade, reason=best.reason
+        outcome=LookupOutcome.FOUND,
+        email=best.email,
+        grade=best.grade,
+        reason=best.reason,
+        candidates=tuple(
+            EmailCandidate(email=c.email, grade=c.grade, smtp_valid=c.smtp_valid, reason=c.reason)
+            for c in ranked
+        ),
     )
 
 

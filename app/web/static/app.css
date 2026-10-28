@@ -89,6 +89,10 @@ textarea { width: 100%; }
 [hidden] { display: none !important; }
 
 .copy-block { display: flex; flex-direction: column; gap: 0.25rem; margin: 0.75rem 0; }
+.email-options ul { list-style: none; padding: 0; margin: 0.25rem 0 0.75rem; }
+.email-options li { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.3rem 0; border-top: 1px solid var(--line); }
+.email-options li:first-child { border-top: 0; }
+.email-address { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
 .copy-row { display: flex; gap: 0.5rem; align-items: flex-start; }
 .copy-row input, .copy-row textarea { flex: 1; }
 .copy.copied { background: var(--ok); border-color: var(--ok); color: #fff; }

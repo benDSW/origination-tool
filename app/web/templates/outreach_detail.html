@@ -23,6 +23,7 @@
       <dt>RocketReach</dt><dd>{{ lk.outcome | label }}{% if lk.grade %} (grade {{ lk.grade }}){% endif %}{% if lk.reason %}: {{ lk.reason }}{% endif %}, {{ lk.created_at | dt }}</dd>
     {% endif %}
   </dl>
+  {{ m.email_options(detail.item, here) }}
 </article>
 
 {% if detail.draft %}

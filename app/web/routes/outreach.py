@@ -160,6 +160,22 @@ def set_email(
     )
 
 
+@router.post("/outreach/{outreach_id:int}/choose-email")
+def choose_email(
+    request: Request,
+    services: ServicesDep,
+    outreach_id: OutreachId,
+    email: Annotated[str, Form(max_length=254)] = "",
+    next_url: NextField = "/drafts",
+) -> Response:
+    return _act(
+        request,
+        lambda: services.outreach.choose_email(outreach_id, email),
+        success="Address chosen and the draft updated (see Drafts).",
+        next_url=next_url,
+    )
+
+
 @router.post("/outreach/{outreach_id:int}/draft-anyway")
 def draft_anyway(
     request: Request, services: ServicesDep, outreach_id: OutreachId, next_url: NextField = "/excluded"

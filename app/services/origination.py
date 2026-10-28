@@ -591,6 +591,7 @@ class OriginationService:
                 email=result.email,
                 grade=result.grade,
                 reason=result.reason,
+                candidates=result.candidates,
                 created_at=ctx.now,
             )
         )
@@ -604,7 +605,7 @@ class OriginationService:
                 template=template,
                 source=EventSource.PIPELINE,
                 at=ctx.now,
-                note=f"RocketReach email (grade {result.grade or 'n/a'})",
+                note=_rocketreach_note(result),
             )
             self._store.save_outreach(outreach, event)
             ctx.counts.drafted += 1
@@ -614,6 +615,14 @@ class OriginationService:
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
+
+
+def _rocketreach_note(result: EmailLookupResult) -> str:
+    note = f"RocketReach email (grade {result.grade or 'n/a'})"
+    others = len(result.candidates) - 1
+    if others > 0:
+        note += f"; {others} other verified address{'es' if others > 1 else ''} to choose from"
+    return note
 
 
 def _founder_from_signal(signal: Signal, now: datetime) -> FounderRecord:

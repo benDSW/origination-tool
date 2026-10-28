@@ -18,6 +18,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError, StatementError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.domain.models import (
+    EmailCandidate,
     EmailLookupRecord,
     EmailSource,
     EmailTemplate,
@@ -137,8 +138,26 @@ def _lookup_dto(row: EmailLookupRow) -> EmailLookupRecord:
         email=row.email,
         grade=row.grade,
         reason=row.reason,
+        candidates=_candidates_from_json(row.candidates),
         created_at=row.created_at,
     )
+
+
+def _candidates_to_json(candidates: Sequence[EmailCandidate]) -> list[dict[str, Any]] | None:
+    return [c.model_dump() for c in candidates] or None
+
+
+def _candidates_from_json(raw: object) -> tuple[EmailCandidate, ...]:
+    # Skip anything malformed rather than failing the whole page.
+    if not isinstance(raw, list):
+        return ()
+    parsed: list[EmailCandidate] = []
+    for item in raw:
+        try:
+            parsed.append(EmailCandidate.model_validate(item))
+        except ValueError:
+            continue
+    return tuple(parsed)
 
 
 def _run_counts(raw: dict[str, Any] | None) -> RunCounts:
@@ -450,6 +469,19 @@ class SqlStore:
             ).first()
             return _lookup_dto(row) if row is not None else None
 
+    def list_email_lookups(
+        self, founder_ids: Sequence[int], provider: EmailSource
+    ) -> dict[int, EmailLookupRecord]:
+        if not founder_ids:
+            return {}
+        with self._tx() as s:
+            rows = s.scalars(
+                select(EmailLookupRow).where(
+                    EmailLookupRow.provider == provider, EmailLookupRow.founder_id.in_(set(founder_ids))
+                )
+            )
+            return {row.founder_id: _lookup_dto(row) for row in rows}
+
     def add_email_lookup(self, record: EmailLookupRecord) -> None:
         def op() -> None:
             with self._tx() as s:
@@ -467,6 +499,7 @@ class SqlStore:
                 row.email = record.email
                 row.grade = record.grade
                 row.reason = record.reason
+                row.candidates = _candidates_to_json(record.candidates)
                 row.created_at = record.created_at
 
         self._retry_on_conflict(op)
@@ -490,6 +523,7 @@ class SqlStore:
             "email": reservation.email,
             "grade": reservation.grade,
             "reason": reservation.reason,
+            "candidates": _candidates_to_json(reservation.candidates),
             "created_at": reservation.created_at,
         }
 

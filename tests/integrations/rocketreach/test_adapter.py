@@ -8,7 +8,7 @@ import httpx
 import pytest
 import respx
 
-from app.domain.models import EmailLookupResult, LookupOutcome
+from app.domain.models import EmailCandidate, EmailLookupResult, LookupOutcome
 from app.domain.ports import EmailFinder, IntegrationError
 from app.integrations.rocketreach import RocketReachAdapter, RocketReachClient
 from app.integrations.rocketreach.adapter import parse_remaining_credits
@@ -52,6 +52,15 @@ def test_found_prefers_company_domain(api: respx.MockRouter, adapter: RocketReac
         email="alex@co1.example",
         grade="A",
         reason="professional email on the company domain",
+        candidates=(
+            EmailCandidate(
+                email="alex@co1.example",
+                grade="A",
+                smtp_valid=True,
+                reason="professional email on the company domain",
+            ),
+            EmailCandidate(email="alex.t@mail.example", grade="A", smtp_valid=True, reason="personal email"),
+        ),
     )
     assert route.calls.last.request.url.params["linkedin_url"] == PROFILE_URL
 

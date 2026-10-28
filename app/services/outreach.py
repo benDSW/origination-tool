@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from app.domain.models import (
     CloseReason,
     Draft,
+    EmailCandidate,
     EmailLookupRecord,
     EmailSource,
     EventSource,
@@ -40,6 +41,8 @@ logger = logging.getLogger(__name__)
 
 S = OutreachStatus
 PIPELINE_STATUSES: tuple[OutreachStatus, ...] = (S.SENT, S.REPLIED, S.DECK_RECEIVED)
+# Statuses in which the user can still pick a different RocketReach address.
+CHOOSABLE_STATUSES: frozenset[OutreachStatus] = frozenset({S.NEEDS_EMAIL, S.DRAFTED})
 CREDITS_CACHE_SECONDS = 300
 MAX_LIST = 2000
 
@@ -56,11 +59,19 @@ class OutreachItem:
     ``days_waiting`` is days since the step the founder is waiting on: since the
     draft (DRAFTED), since sending (SENT, i.e. awaiting a reply), since the reply
     (REPLIED, awaiting a deck). None for other statuses.
+
+    ``email_options`` is every verified address RocketReach found, best first
+    (empty when there was no lookup, or it predates keeping alternatives).
     """
 
     view: OutreachView
     days_waiting: int | None
     follow_up_due: bool
+    email_options: tuple[EmailCandidate, ...] = ()
+
+    @property
+    def can_choose_email(self) -> bool:
+        return self.view.outreach.status in CHOOSABLE_STATUSES and bool(self.email_options)
 
     @property
     def outreach(self) -> OutreachRecord:
@@ -151,7 +162,10 @@ class OutreachService:
         wanted = frozenset(statuses) if statuses is not None else None
         now = self._clock()
         views = self._store.list_outreach(wanted, limit=max(1, min(limit, MAX_LIST)))
-        return [self._item(v, now) for v in views]
+        lookups = self._store.list_email_lookups(
+            [v.founder.id for v in views if v.founder.id is not None], EmailSource.ROCKETREACH
+        )
+        return [self._item(v, now, lookups.get(v.founder.id or 0)) for v in views]
 
     def detail(self, outreach_id: int) -> OutreachDetail:
         view = self._view(outreach_id)
@@ -162,7 +176,7 @@ class OutreachService:
             else None
         )
         return OutreachDetail(
-            item=self._item(view, self._clock()),
+            item=self._item(view, self._clock(), lookup),
             events=self._store.list_status_events(outreach_id),
             rocketreach_lookup=lookup,
         )
@@ -227,6 +241,36 @@ class OutreachService:
             raise InvalidAction(f"An email can only be added while the founder is {_label(S.NEEDS_EMAIL)}")
         return self._draft(view, address, EmailSource.MANUAL, note="Email entered manually")
 
+    def choose_email(self, outreach_id: int, email: str) -> OutreachRecord:
+        """Use another verified RocketReach address: re-renders the draft (DRAFTED) or
+        creates it (NEEDS_EMAIL). Only addresses RocketReach returned are accepted."""
+        address = normalise_email(email)
+        view = self._view(outreach_id)
+        outreach, founder = view.outreach, view.founder
+        options = {c.email.casefold(): c.email for c in self._email_options(founder)}
+        if address is None or address.casefold() not in options:
+            raise ValidationFailed(["That address is not one RocketReach found for this founder"])
+        address = options[address.casefold()]  # RocketReach's spelling, not the submitted one
+        if outreach.status is S.NEEDS_EMAIL:
+            return self._draft(view, address, EmailSource.ROCKETREACH, note="RocketReach address chosen")
+        if outreach.status is not S.DRAFTED:
+            raise InvalidAction("The address can only be changed before the email is sent")
+        if outreach.email is not None and outreach.email.casefold() == address.casefold():
+            return outreach
+        # Same status, so no audit event (as for re-rendering after a template edit).
+        template = self._store.get_template()
+        try:
+            draft = build_draft(template, founder, address)
+        except TemplateError:
+            raise ValidationFailed(["That email address is not valid"]) from None
+        write_draft(outreach, draft, template)
+        outreach.email_source = EmailSource.ROCKETREACH
+        outreach.updated_at = self._clock()
+        try:
+            return self._store.save_outreach(outreach)
+        except NotFoundError:
+            raise NotFound("That outreach record no longer exists") from None
+
     def draft_anyway(self, outreach_id: int) -> OutreachRecord:
         """Override an exclusion (R7): draft if an email is known, else NEEDS_EMAIL."""
         view = self._view(outreach_id)
@@ -258,6 +302,7 @@ class OutreachService:
         lookup = self._store.get_email_lookup(founder_id, EmailSource.ROCKETREACH)
         if lookup is not None:
             emails.append(lookup.email)
+            emails.extend(c.email for c in lookup.candidates)
         keys = self._suppression.for_identity(
             signal_id=founder.evertrace_signal_id, linkedin_slug=founder.linkedin_slug, emails=emails
         )
@@ -360,12 +405,23 @@ class OutreachService:
             return lookup.email, EmailSource.ROCKETREACH
         return None
 
-    def _item(self, view: OutreachView, now: datetime) -> OutreachItem:
+    def _email_options(self, founder: FounderRecord) -> tuple[EmailCandidate, ...]:
+        if founder.id is None:  # pragma: no cover - stored founders always have ids
+            return ()
+        lookup = self._store.get_email_lookup(founder.id, EmailSource.ROCKETREACH)
+        return lookup.candidates if lookup is not None else ()
+
+    def _item(self, view: OutreachView, now: datetime, lookup: EmailLookupRecord | None) -> OutreachItem:
         o = view.outreach
         since = {S.DRAFTED: o.drafted_at, S.SENT: o.sent_at, S.REPLIED: o.replied_at}.get(o.status)
         days = whole_days_between(since, now) if since is not None else None
         due = o.status is S.SENT and o.sent_at is not None and now - o.sent_at >= self._follow_up
-        return OutreachItem(view=view, days_waiting=days, follow_up_due=due)
+        return OutreachItem(
+            view=view,
+            days_waiting=days,
+            follow_up_due=due,
+            email_options=lookup.candidates if lookup is not None else (),
+        )
 
     def _remaining_credits(self, now: datetime) -> int | None:
         """RocketReach credits, cached for a few minutes so the overview page does not

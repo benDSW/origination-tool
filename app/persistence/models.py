@@ -196,6 +196,8 @@ class EmailLookupRow(Base):
     email: Mapped[str | None] = mapped_column(String(320))
     grade: Mapped[str | None] = mapped_column(String(32))
     reason: Mapped[str | None] = mapped_column(Text)
+    # Every verified address, best first: [{"email", "grade", "smtp_valid", "reason"}].
+    candidates: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), index=True)
 
 

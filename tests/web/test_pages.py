@@ -262,6 +262,69 @@ def test_header_injection_in_manual_email_is_rejected(
     assert world.status(oid) is S.NEEDS_EMAIL
 
 
+def _rocketreach_draft_with_alternatives(world: World) -> int:
+    from app.domain.models import EmailCandidate, EmailLookupResult, LookupOutcome
+
+    world.finder.results["alex-testfounder-5"] = EmailLookupResult(
+        outcome=LookupOutcome.FOUND,
+        email="alex.t@mail.example",
+        grade="A",
+        candidates=(
+            EmailCandidate(email="alex.t@mail.example", grade="A", smtp_valid=True, reason="personal email"),
+            EmailCandidate(
+                email="alex@bigpharma.example", grade="A-", reason="professional email on another domain"
+            ),
+        ),
+    )
+    world.enable_search()
+    world.signals.by_filters[world.catalog.searches[0].filters] = [make_signal(5)]
+    world.services.origination.run(RunTrigger.CRON)
+    (view,) = world.store.list_outreach()
+    return view.outreach.id or 0
+
+
+def test_drafts_list_rocketreach_alternatives_and_switch(client: WebClient, world: World) -> None:
+    oid = _rocketreach_draft_with_alternatives(world)
+    page = client.get("/drafts").text
+    assert "RocketReach found 2 verified addresses" in page
+    assert "professional email on another domain, grade A-" in page
+    assert "In use" in page
+    assert page.count(f'action="/outreach/{oid}/choose-email"') == 1  # only for the one not in use
+    assert 'name="email" value="alex@bigpharma.example"' in page
+
+    response = client.post(
+        f"/outreach/{oid}/choose-email",
+        {"email": "alex@bigpharma.example", "next": f"/drafts#outreach-{oid}"},
+    )
+    assert "Address chosen and the draft updated" in client.flash(response)
+    record = world.store.get_outreach(oid)
+    assert record.status is S.DRAFTED and record.email == "alex@bigpharma.example"
+    assert input_value(client.get("/drafts").text, f"to-{oid}") == "alex@bigpharma.example"
+
+
+def test_choose_email_rejects_an_address_rocketreach_did_not_find(client: WebClient, world: World) -> None:
+    oid = _rocketreach_draft_with_alternatives(world)
+    response = client.post(
+        f"/outreach/{oid}/choose-email", {"email": "attacker@evil.example", "next": "/drafts"}
+    )
+    assert "not one RocketReach found" in client.flash(response)
+    assert world.store.get_outreach(oid).email == "alex.t@mail.example"
+
+
+def test_needs_email_offers_rocketreach_addresses_after_wrong_email(client: WebClient, world: World) -> None:
+    oid = _rocketreach_draft_with_alternatives(world)
+    client.post(f"/outreach/{oid}/discard-email", {"next": "/drafts"})
+    page = client.get("/needs-email").text
+    assert page.count(f'action="/outreach/{oid}/choose-email"') == 2
+    client.post(f"/outreach/{oid}/choose-email", {"email": "alex@bigpharma.example", "next": "/needs-email"})
+    assert world.store.get_outreach(oid).email == "alex@bigpharma.example"
+
+
+def test_no_alternatives_block_for_a_single_address(client: WebClient, ids: dict[str, int]) -> None:
+    assert "choose-email" not in client.get("/drafts").text
+    assert "choose-email" not in client.get("/needs-email").text
+
+
 def test_skip_from_needs_email(client: WebClient, world: World, ids: dict[str, int]) -> None:
     oid = ids["sig_test0002"]
     client.post(f"/outreach/{oid}/close", {"reason": "skipped", "next": "/needs-email"})

@@ -9,6 +9,7 @@ import pytest
 
 from app.domain.models import (
     CompanyRef,
+    EmailCandidate,
     EmailLookupResult,
     EmailSource,
     EventSource,
@@ -681,6 +682,29 @@ def test_rocketreach_only_for_needs_email_with_slug(world: World) -> None:
     assert founder is not None and founder.id is not None
     cached = world.store.get_email_lookup(founder.id, EmailSource.ROCKETREACH)
     assert cached is not None and cached.outcome is LookupOutcome.FOUND and cached.grade == "A"
+
+
+def test_rocketreach_alternatives_are_cached_and_noted(world: World) -> None:
+    world.enable(NORTH)
+    _feed(world, NORTH, make_signal(1))
+    candidates = (
+        EmailCandidate(email="alex.t@mail.example", grade="A", smtp_valid=True, reason="personal email"),
+        EmailCandidate(
+            email="alex@bigpharma.example", grade="A", reason="professional email on another domain"
+        ),
+    )
+    world.finder.results["alex-testfounder-1"] = EmailLookupResult(
+        outcome=LookupOutcome.FOUND, email="alex.t@mail.example", grade="A", candidates=candidates
+    )
+
+    _run(world)
+
+    outreach = _outreach(world, "sig_test0001")
+    assert outreach.email == "alex.t@mail.example"
+    cached = world.store.get_email_lookup(outreach.founder_id, EmailSource.ROCKETREACH)
+    assert cached is not None and cached.candidates == candidates
+    note = world.store.list_status_events(outreach.id or 0)[-1].note
+    assert note == "RocketReach email (grade A); 1 other verified address to choose from"
 
 
 def test_rocketreach_never_called_twice_for_a_founder(world: World) -> None:

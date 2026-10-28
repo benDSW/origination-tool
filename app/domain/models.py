@@ -110,11 +110,22 @@ class LookupOutcome(StrEnum):
     ERROR = "error"  # transport / provider error (retryable on a later run)
 
 
+class EmailCandidate(_Frozen):
+    """One verified address a provider returned. Lookups keep every one, best first,
+    so the user can switch when the top pick is an old employer's address."""
+
+    email: str
+    grade: str | None = None
+    smtp_valid: bool = False
+    reason: str  # how it was ranked, e.g. "personal email" (shown in dashboard)
+
+
 class EmailLookupResult(_Frozen):
     outcome: LookupOutcome
     email: str | None = None
     grade: str | None = None
     reason: str | None = None  # human-readable why (shown in dashboard)
+    candidates: tuple[EmailCandidate, ...] = ()  # every verified address, best first
 
 
 # --------------------------------------------------------------------------- #
@@ -319,6 +330,7 @@ class EmailLookupRecord(_Frozen):
     email: str | None = None
     grade: str | None = None
     reason: str | None = None
+    candidates: tuple[EmailCandidate, ...] = ()  # every verified address, best first
     created_at: datetime
 
 

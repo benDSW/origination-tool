@@ -78,6 +78,33 @@
 </div>
 {% endmacro %}
 
+{% macro email_options(item, next) %}
+{% set o = item.outreach %}
+{% if item.can_choose_email and (item.email_options | length > 1 or o.status.value == "needs_email") %}
+<div class="email-options">
+  <p class="muted">RocketReach found {{ item.email_options | length }} verified address{{ "es" if item.email_options | length > 1 else "" }}, best guess first. Old work addresses bounce: pick the one the founder uses now.</p>
+  <ul>
+  {% for c in item.email_options %}
+    <li>
+      <span class="email-address">{{ c.email }}</span>
+      <span class="muted">{{ c.reason }}{% if c.grade %}, grade {{ c.grade }}{% endif %}{% if c.smtp_valid %}, SMTP valid{% endif %}</span>
+      {% if o.email and c.email | lower == o.email | lower %}
+        <span class="badge badge-on">In use</span>
+      {% else %}
+        <form method="post" action="/outreach/{{ o.id }}/choose-email" class="inline">
+          {{ csrf() }}
+          <input type="hidden" name="next" value="{{ next }}">
+          <input type="hidden" name="email" value="{{ c.email }}">
+          <button type="submit" class="secondary">Use this email</button>
+        </form>
+      {% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endmacro %}
+
 {% macro problems_list(problems) %}
 {% if problems %}
 <div class="flash flash-error" role="alert">

@@ -203,6 +203,12 @@ class Store(Protocol):
 
     # Email lookup cache
     def get_email_lookup(self, founder_id: int, provider: EmailSource) -> EmailLookupRecord | None: ...
+    def list_email_lookups(
+        self, founder_ids: Sequence[int], provider: EmailSource
+    ) -> dict[int, EmailLookupRecord]:
+        """Cache rows for many founders at once, keyed by founder id (missing ids omitted)."""
+        ...
+
     def add_email_lookup(self, record: EmailLookupRecord) -> None:
         """Insert or replace the single cache row for (founder, provider)."""
         ...

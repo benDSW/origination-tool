@@ -8,6 +8,7 @@ import pytest
 
 from app.domain.models import (
     CloseReason,
+    EmailCandidate,
     EmailLookupRecord,
     EmailLookupResult,
     EmailSource,
@@ -20,6 +21,7 @@ from app.domain.models import (
 from app.domain.ports import IntegrationError
 from app.services import InvalidAction, NotFound, ValidationFailed
 from app.services.outreach import CREDITS_CACHE_SECONDS, OutreachService
+from app.services.suppression import SuppressionKeys
 from tests.fakes import FakeEmailFinder, make_signal
 from tests.services.conftest import NORTH, NOW, World
 
@@ -366,3 +368,102 @@ def test_rerender_skips_undeliverable_addresses(world: World, ids: dict[str, int
 def test_found_lookup_result_type_is_exported() -> None:
     # Guard: the services rely on FOUND results possibly having no grade.
     assert EmailLookupResult(outcome=LookupOutcome.FOUND, email="x@co.example").grade is None
+
+
+# --------------------------------------------------------------------------- #
+# Choosing between the addresses RocketReach found
+# --------------------------------------------------------------------------- #
+
+CANDIDATES = (
+    EmailCandidate(email="alex.t@mail.example", grade="A", smtp_valid=True, reason="personal email"),
+    EmailCandidate(email="alex@bigpharma.example", grade="A", reason="professional email on another domain"),
+)
+
+
+def _cache_candidates(world: World, oid: int) -> None:
+    world.store.add_email_lookup(
+        EmailLookupRecord(
+            founder_id=world.store.get_outreach(oid).founder_id,
+            provider=EmailSource.ROCKETREACH,
+            outcome=LookupOutcome.FOUND,
+            email=CANDIDATES[0].email,
+            grade="A",
+            candidates=CANDIDATES,
+            created_at=NOW,
+        )
+    )
+
+
+def test_email_options_are_listed_best_first(world: World, ids: dict[str, int]) -> None:
+    oid = ids["sig_test0002"]
+    _cache_candidates(world, oid)
+    svc = _svc(world)
+
+    (item,) = svc.list_by_status([S.NEEDS_EMAIL])
+    assert item.email_options == CANDIDATES
+    assert item.can_choose_email
+    assert svc.detail(oid).item.email_options == CANDIDATES
+    (other,) = svc.list_by_status([S.DRAFTED])
+    assert other.email_options == () and not other.can_choose_email
+
+
+def test_choose_email_switches_an_open_draft(world: World, ids: dict[str, int]) -> None:
+    oid = ids["sig_test0001"]
+    _cache_candidates(world, oid)
+    before = world.store.list_status_events(oid)
+    world.clock.advance(hours=1)
+
+    record = _svc(world).choose_email(oid, "  Alex@BigPharma.example ")
+
+    assert record.status is S.DRAFTED
+    assert record.email == "alex@bigpharma.example"
+    assert record.email_source is EmailSource.ROCKETREACH
+    assert record.draft_body is not None and record.draft_body.startswith("Hi Alex1,")
+    assert world.store.get_outreach(oid).email == "alex@bigpharma.example"
+    assert world.store.list_status_events(oid) == before  # not a status change
+
+
+def test_choose_email_drafts_a_needs_email_founder(world: World, ids: dict[str, int]) -> None:
+    oid = ids["sig_test0002"]
+    _cache_candidates(world, oid)
+
+    record = _svc(world).choose_email(oid, "alex.t@mail.example")
+
+    assert (record.status, record.email, record.email_source) == (
+        S.DRAFTED,
+        "alex.t@mail.example",
+        EmailSource.ROCKETREACH,
+    )
+    assert world.store.list_status_events(oid)[-1].note == "RocketReach address chosen"
+
+
+@pytest.mark.parametrize(
+    "email", ["someone@else.example", "", "not-an-email", "alex.t@mail.example\r\nBcc: x@y.example"]
+)
+def test_choose_email_only_accepts_addresses_rocketreach_found(
+    world: World, ids: dict[str, int], email: str
+) -> None:
+    oid = ids["sig_test0002"]
+    _cache_candidates(world, oid)
+    with pytest.raises(ValidationFailed):
+        _svc(world).choose_email(oid, email)
+    assert world.store.get_outreach(oid).status is S.NEEDS_EMAIL
+
+
+def test_choose_email_rejected_once_sent(world: World, ids: dict[str, int]) -> None:
+    oid = ids["sig_test0001"]
+    _cache_candidates(world, oid)
+    _svc(world).mark_sent(oid)
+    with pytest.raises(InvalidAction):
+        _svc(world).choose_email(oid, "alex.t@mail.example")
+
+
+def test_forget_founder_suppresses_every_candidate_address(world: World, ids: dict[str, int]) -> None:
+    oid = ids["sig_test0002"]
+    _cache_candidates(world, oid)
+    svc = _svc(world)
+
+    svc.forget_outreach_founder(oid)
+
+    keys = SuppressionKeys.development().for_identity(emails=["alex@bigpharma.example"])
+    assert world.store.is_suppressed(keys)
