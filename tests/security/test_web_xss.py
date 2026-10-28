@@ -181,7 +181,9 @@ def test_templates_have_no_inline_scripts_styles_or_handlers() -> None:
     pages["_UNAUTHORISED_PAGE"] = security._UNAUTHORISED_PAGE
     for name, text in pages.items():
         for tag in re.findall(r"<script\b[^>]*>", text, re.I):
-            assert 'src="/static/' in tag, (name, tag)
+            # Local scripts only: a literal /static/ path or static_url() (always /static/...).
+            local = 'src="/static/' in tag or re.search(r'src="\{\{ static_url\("[\w.-]+"\) \}\}"', tag)
+            assert local, (name, tag)
         assert not re.search(r"\sstyle\s*=", text, re.I), name
         assert not re.search(r"<style\b", text, re.I), name
         assert not re.search(r"\son[a-z]+\s*=", text, re.I), name

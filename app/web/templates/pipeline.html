@@ -10,10 +10,10 @@
   </p>
   {{ m.post_button("/tracking/sync", "Check for replies now", "/pipeline") }}
 </div>
-{{ m.search_box() }}
+{{ m.search_box(columns | map(attribute=1) | map("length") | sum, "founders") }}
 {% for status, items in columns %}
 <section id="column-{{ status.value }}" data-search-group>
-  <h2>{{ status | label | capitalize }} ({{ items | length }})</h2>
+  <h2>{{ status | label | capitalize }} (<span data-search-count>{{ items | length }}</span>)</h2>
   {% if items %}
   <table>
     <thead><tr><th>Founder</th><th>Company</th><th>Email</th><th>Sent</th><th>Replied</th><th>Deck</th><th>Days waiting</th><th>Actions</th></tr></thead>

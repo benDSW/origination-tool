@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Needs email ({{ items | length }})</h1>
 <p class="muted">No usable address was found automatically, or the drafted one was discarded. Pick one RocketReach found or enter one to create the draft.</p>
-{% if items %}{{ m.search_box() }}{% endif %}
+{% if items %}{{ m.search_box(items | length, "founders") }}{% endif %}
 {% for item in items %}
   {% set o = item.outreach %}
   <article class="card" id="outreach-{{ o.id }}" data-search-text="{{ m.search_text(item.founder) }}">

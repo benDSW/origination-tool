@@ -52,17 +52,22 @@
   });
 
   // ------------------------------------------------------------ page search
-  // Keyword filter over the items already on the page (founder + company name).
-  // Every keyword must appear somewhere in an item's data-search-text.
+  // Filters the items already on the page as you type: no Enter, no reload. Every
+  // whitespace-separated keyword must appear somewhere in an item's data-search-text
+  // (founder + company name), ignoring case and accents, so "k" shows everything with
+  // a k in it and each extra letter narrows it further.
   var search = document.querySelector("[data-search]");
   if (search) {
     var searchItems = Array.prototype.slice.call(document.querySelectorAll("[data-search-text]"));
     var searchGroups = Array.prototype.slice.call(document.querySelectorAll("[data-search-group]"));
-    var searchStatus = document.querySelector("[data-search-status]");
+    var searchShown = document.querySelector("[data-search-shown]");
+    var searchKeys = document.querySelector("[data-search-keys]");
+    var searchClear = document.querySelector("[data-search-clear]");
     var searchEmpty = document.querySelector("[data-search-empty]");
+    var searchTerm = document.querySelector("[data-search-term]");
 
     var normalise = function (text) {
-      return String(text || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      return String(text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     };
     searchItems.forEach(function (item) {
       item.searchText = normalise(item.getAttribute("data-search-text"));
@@ -78,32 +83,70 @@
           shown += 1;
         }
       });
-      // Pipeline: hide whole status sections with nothing left in them while searching.
+      // Pipeline: each status section shows its own match count, and drops out
+      // entirely while searching if nothing in it matches.
       searchGroups.forEach(function (group) {
-        group.hidden = keywords.length > 0 && !group.querySelector("[data-search-text]:not([hidden])");
+        var hits = group.querySelectorAll("[data-search-text]:not([hidden])").length;
+        var count = group.querySelector("[data-search-count]");
+        if (count) {
+          count.textContent = hits;
+        }
+        group.hidden = keywords.length > 0 && hits === 0;
       });
-      if (searchStatus) {
-        searchStatus.textContent = keywords.length ? shown + " of " + searchItems.length + " shown" : "";
+      if (searchShown) {
+        searchShown.textContent = shown;
       }
       if (searchEmpty) {
         searchEmpty.hidden = !(keywords.length && shown === 0);
       }
+      if (searchTerm) {
+        searchTerm.textContent = "\u201c" + search.value.trim() + "\u201d";
+      }
+      if (searchClear) {
+        searchClear.classList.toggle("on", !!search.value);
+      }
+      if (searchKeys) {
+        searchKeys.classList.toggle("on", document.activeElement === search && !search.value);
+      }
+    };
+
+    var clearSearch = function () {
+      search.value = "";
+      applySearch();
     };
 
     search.addEventListener("input", applySearch);
-    search.addEventListener("keydown", function (event) {
-      if (event.key === "Escape") {
-        search.value = "";
-        applySearch();
+    search.addEventListener("focus", applySearch);
+    search.addEventListener("blur", function () {
+      if (searchKeys) {
+        searchKeys.classList.remove("on");
       }
     });
+    search.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault(); // the list is already filtered
+      } else if (event.key === "Escape") {
+        if (search.value) {
+          clearSearch();
+        } else {
+          search.blur();
+        }
+      }
+    });
+    if (searchClear) {
+      searchClear.addEventListener("click", function () {
+        clearSearch();
+        search.focus();
+      });
+    }
     // "/" jumps to the search box unless the user is already typing in a field.
     document.addEventListener("keydown", function (event) {
-      var el = document.activeElement;
+      var el = event.target;
       var typing = el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
       if (event.key === "/" && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault();
         search.focus();
+        search.select();
       }
     });
     applySearch(); // browsers may restore the box's value on back/forward

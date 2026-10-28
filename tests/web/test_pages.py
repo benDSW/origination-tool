@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import html
+import os
 import re
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
@@ -208,7 +210,7 @@ def test_every_copy_button_is_wired_to_a_plain_text_field(
     """R13: each copy button is a non-submitting button whose target exists on the page,
     and the page loads the local script that copies that field's plain-text value."""
     page = client.get("/drafts").text
-    assert '<script src="/static/app.js" defer></script>' in page
+    assert re.search(r'<script src="/static/app\.js\?v=[0-9a-f]{12}" defer></script>', page)
     buttons = re.findall(r"<button([^>]*)data-copy-target=\"([^\"]+)\"", page)
     assert len(buttons) == 4  # To, Subject, Body, Copy all for the one draft
     for attrs, target in buttons:
@@ -422,8 +424,11 @@ def test_card_tabs_have_a_search_box_and_index_founder_and_company(
     client: WebClient, ids: dict[str, int], url: str, signals: list[str]
 ) -> None:
     page = client.get(url).text
-    assert 'id="page-search" type="search" data-search' in page
-    assert "data-search-status" in page and "data-search-empty" in page
+    assert 'id="page-search" type="text" data-search' in page
+    assert "data-search-clear" in page and "data-search-empty" in page
+    noun = "drafts" if url == "/drafts" else "founders"
+    total = len(signals)
+    assert f"Showing <strong data-search-shown>{total}</strong> of {total} {noun}" in page
     expected = set()
     for signal_id in signals:
         n = int(signal_id[-1])
@@ -438,8 +443,10 @@ def test_pipeline_search_indexes_rows_and_groups_sections(
 ) -> None:
     _sent(client, world, ids["sig_test0001"])
     page = client.get("/pipeline").text
-    assert 'id="page-search" type="search" data-search' in page
-    assert page.count("data-search-group") == 3  # one per status section
+    assert 'id="page-search" type="text" data-search' in page
+    assert "Showing <strong data-search-shown>1</strong> of 1 founders" in page
+    sections = page.count("data-search-group")
+    assert sections >= 2 and page.count("<span data-search-count>") == sections  # one per status section
     assert _search_texts(page) == ["Alex1 Testfounder Example1 Limited"]
 
 
@@ -465,6 +472,32 @@ def test_search_script_filters_on_every_keyword(client: WebClient) -> None:
     assert 'querySelector("[data-search]")' in js
     assert "keywords.every(" in js  # all keywords must match (AND)
     assert "item.hidden = !match;" in js  # hides with the hidden attribute, no markup injected
+    assert 'addEventListener("input", applySearch)' in js  # filters on every keystroke
+    assert js.isascii()  # no raw non-ASCII bytes to be mis-decoded; the regex uses escapes
+
+
+def test_static_urls_change_when_the_file_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stale cached app.js once left the search box dead; the versioned URL prevents it."""
+    from app.web import rendering
+
+    monkeypatch.setattr(rendering, "STATIC_DIR", tmp_path)
+    monkeypatch.setattr(rendering, "_static_versions", {})
+    asset = tmp_path / "app.js"
+    asset.write_text("one", encoding="utf-8")
+    first = rendering.static_url("app.js")
+    assert re.fullmatch(r"/static/app\.js\?v=[0-9a-f]{12}", first)
+    assert rendering.static_url("app.js") == first
+    asset.write_text("two", encoding="utf-8")
+    os.utime(asset, (asset.stat().st_mtime + 5,) * 2)
+    assert rendering.static_url("app.js") != first
+
+
+def test_pages_link_the_current_static_versions(client: WebClient) -> None:
+    from app.web.rendering import static_url
+
+    page = client.get("/").text
+    assert f'href="{static_url("app.css")}"' in page and f'src="{static_url("app.js")}"' in page
+    assert client.get(static_url("app.js")).status_code == 200
 
 
 # --------------------------------------------------------------------------- #

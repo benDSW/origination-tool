@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Excluded ({{ items | length }})</h1>
 <p class="muted">Founders filtered out by location or because they are already in Affinity. You can override an exclusion.</p>
-{% if items %}{{ m.search_box() }}{% endif %}
+{% if items %}{{ m.search_box(items | length, "founders") }}{% endif %}
 {% for item in items %}
   {% set o = item.outreach %}
   <article class="card" id="outreach-{{ o.id }}" data-search-text="{{ m.search_text(item.founder) }}">

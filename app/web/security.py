@@ -75,8 +75,9 @@ class SecurityHeadersMiddleware:
                 headers["Cross-Origin-Resource-Policy"] = "same-origin"
                 if self.hsts:
                     headers["Strict-Transport-Security"] = HSTS
-                if not is_static:
-                    headers["Cache-Control"] = "no-store"
+                # Static files may be cached but must be revalidated (cheap 304 via ETag),
+                # so a browser never runs an old app.js against new page markup.
+                headers["Cache-Control"] = "no-cache" if is_static else "no-store"
             await send(message)
 
         try:

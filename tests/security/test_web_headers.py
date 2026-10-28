@@ -73,7 +73,9 @@ def test_static_files_have_headers_and_correct_types(anon: WebClient) -> None:
     assert css.headers["content-type"].startswith("text/css")
     for response in (js, css):
         assert_security_headers(response, cacheable=True)
-        assert response.headers.get("cache-control") != "no-store"
+        # Cacheable, but always revalidated so an updated app.js is picked up at once.
+        assert response.headers.get("cache-control") == "no-cache"
+        assert response.headers.get("etag")
     missing = anon.client.get("/static/nope.js")
     assert missing.status_code == 404
     assert_security_headers(missing, cacheable=True)

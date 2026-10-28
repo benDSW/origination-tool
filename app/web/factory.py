@@ -13,7 +13,6 @@ import logging
 import mimetypes
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import Depends, FastAPI
 from starlette.concurrency import run_in_threadpool
@@ -29,12 +28,12 @@ from app.web.csrf import csrf_protect
 from app.web.deps import Clock, RunHistory, latest_run_only
 from app.web.errors import install_error_handlers
 from app.web.flash import FlashStore
+from app.web.rendering import STATIC_DIR
 from app.web.routes import ALL_ROUTERS
 from app.web.security import AuthGateMiddleware, BodySizeLimitMiddleware, SecurityHeadersMiddleware
 
 logger = logging.getLogger(__name__)
 
-STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 # Windows can map .js to text/plain via the registry; with nosniff the browser
 # would then refuse to run app.js. Pin the types we serve.

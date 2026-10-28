@@ -7,6 +7,7 @@ must never mark them ``|safe``.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import UTC, datetime
 from enum import Enum
@@ -58,6 +59,22 @@ def companies_house_link(founder: FounderRecord) -> str | None:
     return url if url and _COMPANIES_HOUSE.fullmatch(url) else None
 
 
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+_static_versions: dict[str, tuple[float, str]] = {}
+
+
+def static_url(name: str) -> str:
+    """'/static/app.js?v=<content hash>': a changed file gets a new URL, so browsers
+    never keep running a stale copy. Re-hashed only when the file's mtime changes."""
+    path = STATIC_DIR / name
+    mtime = path.stat().st_mtime
+    cached = _static_versions.get(name)
+    if cached is None or cached[0] != mtime:
+        cached = (mtime, hashlib.sha256(path.read_bytes()).hexdigest()[:12])
+        _static_versions[name] = cached
+    return f"/static/{name}?v={cached[1]}"
+
+
 def _build_env() -> jinja2.Environment:
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(str(TEMPLATE_DIR)),
@@ -70,6 +87,7 @@ def _build_env() -> jinja2.Environment:
     env.filters["label"] = label
     env.globals["linkedin_link"] = linkedin_link
     env.globals["companies_house_link"] = companies_house_link
+    env.globals["static_url"] = static_url
     env.globals["CSRF_FIELD"] = CSRF_FIELD
     return env
 
