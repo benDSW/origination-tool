@@ -22,6 +22,17 @@
 </form>
 {% endmacro %}
 
+{% macro search_box() %}
+<div class="search" role="search">
+  <label class="sr-only" for="page-search">Search by company or founder</label>
+  <input id="page-search" type="search" data-search placeholder="Search company or founder (press /)" autocomplete="off" spellcheck="false">
+  <span class="muted" data-search-status aria-live="polite"></span>
+</div>
+<p class="muted" data-search-empty hidden>No matches.</p>
+{% endmacro %}
+
+{% macro search_text(founder) %}{{ founder.full_name }} {{ founder.company_name or "" }}{% endmacro %}
+
 {% macro founder_context(founder, outreach=None) %}
 <div class="founder">
   <h3><a href="/outreach/{{ outreach.id if outreach else '' }}">{{ founder.full_name }}</a>

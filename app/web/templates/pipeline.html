@@ -3,8 +3,9 @@
 {% block title %}Pipeline{% endblock %}
 {% block content %}
 <h1>Pipeline</h1>
+{{ m.search_box() }}
 {% for status, items in columns %}
-<section id="column-{{ status.value }}">
+<section id="column-{{ status.value }}" data-search-group>
   <h2>{{ status | label | capitalize }} ({{ items | length }})</h2>
   {% if items %}
   <table>
@@ -12,7 +13,7 @@
     <tbody>
     {% for item in items %}
       {% set o = item.outreach %}
-      <tr id="outreach-{{ o.id }}"{% if item.follow_up_due %} class="follow-up"{% endif %}>
+      <tr id="outreach-{{ o.id }}"{% if item.follow_up_due %} class="follow-up"{% endif %} data-search-text="{{ m.search_text(item.founder) }}">
         <td><a href="/outreach/{{ o.id }}">{{ item.founder.full_name }}</a></td>
         <td>{{ item.founder.company_name or "-" }}</td>
         <td>{{ o.email or "-" }}</td>

@@ -304,6 +304,72 @@ def test_draft_anyway_on_a_non_excluded_founder_flashes_the_service_error(
 
 
 # --------------------------------------------------------------------------- #
+# Page search (Drafts, Needs email, Pipeline, Excluded)
+# --------------------------------------------------------------------------- #
+
+
+def _search_texts(page: str) -> list[str]:
+    return [html.unescape(v) for v in re.findall(r'data-search-text="([^"]*)"', page)]
+
+
+@pytest.mark.parametrize(
+    ("url", "signals"),
+    [
+        ("/drafts", ["sig_test0001"]),
+        ("/needs-email", ["sig_test0002"]),
+        ("/excluded", ["sig_test0003", "sig_test0004"]),
+    ],
+)
+def test_card_tabs_have_a_search_box_and_index_founder_and_company(
+    client: WebClient, ids: dict[str, int], url: str, signals: list[str]
+) -> None:
+    page = client.get(url).text
+    assert 'id="page-search" type="search" data-search' in page
+    assert "data-search-status" in page and "data-search-empty" in page
+    expected = set()
+    for signal_id in signals:
+        n = int(signal_id[-1])
+        assert f'id="outreach-{ids[signal_id]}"' in page
+        expected.add(f"Alex{n} Testfounder Example{n} Limited")
+    texts = _search_texts(page)
+    assert len(texts) == len(signals) and set(texts) == expected
+
+
+def test_pipeline_search_indexes_rows_and_groups_sections(
+    client: WebClient, world: World, ids: dict[str, int]
+) -> None:
+    _sent(client, world, ids["sig_test0001"])
+    page = client.get("/pipeline").text
+    assert 'id="page-search" type="search" data-search' in page
+    assert page.count("data-search-group") == 3  # one per status section
+    assert _search_texts(page) == ["Alex1 Testfounder Example1 Limited"]
+
+
+def test_search_box_hidden_when_a_card_tab_is_empty(client: WebClient) -> None:
+    for url in ("/drafts", "/needs-email", "/excluded"):
+        assert "data-search" not in client.get(url).text, url
+
+
+def test_search_text_handles_missing_company_and_escapes_names(client: WebClient, world: World) -> None:
+    world.seed(
+        make_signal(1, email="a@co1.example", company=CompanyRef(name='Evil" onmouseover="alert(1) <b>Ltd')),
+        make_signal(2, email="b@co2.example", company=None),
+    )
+    page = client.get("/drafts").text
+    assert 'onmouseover="alert(1)' not in page and "<b>Ltd" not in page
+    texts = _search_texts(page)
+    assert 'Alex1 Testfounder Evil" onmouseover="alert(1) <b>Ltd' in texts
+    assert "Alex2 Testfounder " in texts
+
+
+def test_search_script_filters_on_every_keyword(client: WebClient) -> None:
+    js = client.get("/static/app.js").text
+    assert 'querySelector("[data-search]")' in js
+    assert "keywords.every(" in js  # all keywords must match (AND)
+    assert "item.hidden = !match;" in js  # hides with the hidden attribute, no markup injected
+
+
+# --------------------------------------------------------------------------- #
 # Pipeline + detail (R16, R17)
 # --------------------------------------------------------------------------- #
 
@@ -323,7 +389,7 @@ def test_pipeline_sections_days_waiting_and_follow_up_flag(
     page = client.get("/pipeline").text
     for status in ("sent", "replied", "deck_received"):
         assert f'id="column-{status}"' in page
-    assert f'<tr id="outreach-{oid}" class="follow-up">' in page
+    assert f'<tr id="outreach-{oid}" class="follow-up" ' in page
     assert "Follow up" in page and "<td>15" in page
     assert NOW.strftime("%Y-%m-%d %H:%M UTC") in page  # sent timestamp
     assert f'action="/outreach/{oid}/replied"' in page

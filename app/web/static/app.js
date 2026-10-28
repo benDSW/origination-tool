@@ -1,5 +1,5 @@
 /*
- * DSW Origination dashboard: copy-to-clipboard buttons and the template live preview.
+ * DSW Origination dashboard: copy-to-clipboard buttons, page search and the template live preview.
  * Loaded from 'self' only (CSP script-src 'self'); no inline handlers, and server
  * text is only ever written with textContent / value, never parsed as HTML.
  */
@@ -50,6 +50,64 @@
       flashButton(button, fallbackCopy(target) ? "Copied" : "Copy failed");
     }
   });
+
+  // ------------------------------------------------------------ page search
+  // Keyword filter over the items already on the page (founder + company name).
+  // Every keyword must appear somewhere in an item's data-search-text.
+  var search = document.querySelector("[data-search]");
+  if (search) {
+    var searchItems = Array.prototype.slice.call(document.querySelectorAll("[data-search-text]"));
+    var searchGroups = Array.prototype.slice.call(document.querySelectorAll("[data-search-group]"));
+    var searchStatus = document.querySelector("[data-search-status]");
+    var searchEmpty = document.querySelector("[data-search-empty]");
+
+    var normalise = function (text) {
+      return String(text || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    };
+    searchItems.forEach(function (item) {
+      item.searchText = normalise(item.getAttribute("data-search-text"));
+    });
+
+    var applySearch = function () {
+      var keywords = normalise(search.value).split(/\s+/).filter(Boolean);
+      var shown = 0;
+      searchItems.forEach(function (item) {
+        var match = keywords.every(function (k) { return item.searchText.indexOf(k) !== -1; });
+        item.hidden = !match;
+        if (match) {
+          shown += 1;
+        }
+      });
+      // Pipeline: hide whole status sections with nothing left in them while searching.
+      searchGroups.forEach(function (group) {
+        group.hidden = keywords.length > 0 && !group.querySelector("[data-search-text]:not([hidden])");
+      });
+      if (searchStatus) {
+        searchStatus.textContent = keywords.length ? shown + " of " + searchItems.length + " shown" : "";
+      }
+      if (searchEmpty) {
+        searchEmpty.hidden = !(keywords.length && shown === 0);
+      }
+    };
+
+    search.addEventListener("input", applySearch);
+    search.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") {
+        search.value = "";
+        applySearch();
+      }
+    });
+    // "/" jumps to the search box unless the user is already typing in a field.
+    document.addEventListener("keydown", function (event) {
+      var el = document.activeElement;
+      var typing = el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
+      if (event.key === "/" && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        search.focus();
+      }
+    });
+    applySearch(); // browsers may restore the box's value on back/forward
+  }
 
   // ------------------------------------------------------------ live preview
   var form = document.getElementById("template-form");
