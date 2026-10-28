@@ -32,6 +32,8 @@ class WebConfig:
     # Proxies in front of the app that append to X-Forwarded-For (Railway's edge: 1).
     # The login rate limit keys on the entry this many hops from the right.
     trusted_proxy_hops: int = 1
+    # Check for founder replies this often while the dashboard runs; 0 turns it off.
+    tracking_interval_seconds: int = 0
 
     @property
     def https_only(self) -> bool:

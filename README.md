@@ -129,6 +129,20 @@ synthetic.
    after 3 consecutive errors or when credits run out).
 8. Syncs sent / replied tracking from Affinity's email data.
 
+### Reply tracking
+
+Sent and replied are detected automatically from Affinity's email sync: the first email from a
+DSW address moves a draft to *Sent*, and the founder's first email after that moves it to
+*Replied* (a reply from another of the founder's addresses counts if Affinity holds it on the same
+person). The only clicks left on the Pipeline page are **Deck received** and **Declined**.
+
+Tracking runs as the last step of every daily run, and **while the dashboard is open it checks every
+`TRACKING_INTERVAL_MINUTES` (default 60)**. Outreach sent more than 21 days ago is re-checked at
+most once a day, to keep Affinity API usage down. **Check for replies now** on the Pipeline page
+checks everyone immediately. If Affinity has no record of the email (for example it bounced, or
+was sent from a mailbox Affinity does not sync), nothing can be detected: use *Mark replied* on the
+founder's page.
+
 The watermark only advances past signals that were fully processed, and never on a dry run.
 
 ---

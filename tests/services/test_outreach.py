@@ -292,7 +292,10 @@ def test_pipeline_columns(world: World, ids: dict[str, int]) -> None:
 
     board = svc.pipeline()
 
-    assert list(board.columns) == [S.SENT, S.REPLIED, S.DECK_RECEIVED]
+    assert list(board.columns) == [S.REPLIED, S.SENT, S.DECK_RECEIVED]
+    # The fixture's run tracked every draft; the board reports the latest check of a Sent row.
+    assert board.last_checked_at is not None
+    assert board.last_checked_at == board.columns[S.SENT][0].outreach.last_tracked_at
     assert [i.days_waiting for i in board.columns[S.SENT]] == [4]
     assert [i.days_waiting for i in board.columns[S.REPLIED]] == [3]
     assert board.columns[S.DECK_RECEIVED] == []

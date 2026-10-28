@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import re
+from datetime import timedelta
 
 import pytest
 
@@ -104,6 +105,40 @@ def test_sync_tracking_button_moves_drafted_to_sent(
     response = client.post("/tracking/sync")
     assert world.status(ids["sig_test0001"]) is S.SENT
     assert "1 status update(s)" in client.flash(response)
+
+
+def test_check_now_on_pipeline_forces_a_full_check_and_returns_there(
+    client: WebClient, world: World, ids: dict[str, int]
+) -> None:
+    oid = ids["sig_test0001"]
+    _sent(client, world, oid)
+    page = client.get("/pipeline").text
+    assert 'action="/tracking/sync"' in page
+    # Sent long ago and checked an hour ago: a timer tick would skip it, the button must not.
+    record = world.store.get_outreach(oid)
+    record.sent_at = NOW - timedelta(days=40)
+    record.last_tracked_at = NOW - timedelta(hours=1)
+    world.store.save_outreach(record)
+    world.inbox.events["alex1@co1.example"] = [InboxEvent(kind=InboxEventKind.REPLIED, occurred_at=NOW)]
+
+    response = client.post("/tracking/sync", {"next": "/pipeline"})
+
+    assert response.headers["location"] == "/pipeline"
+    assert world.status(oid) is S.REPLIED
+    assert client.get("/pipeline").status_code == 200
+
+
+def test_sync_tracking_ignores_an_off_site_next(client: WebClient, world: World) -> None:
+    response = client.post("/tracking/sync", {"next": "https://evil.example/"})
+    assert response.headers["location"] == "/"
+
+
+def test_pipeline_shows_when_replies_were_last_checked(
+    client: WebClient, world: World, ids: dict[str, int]
+) -> None:
+    _sent(client, world, ids["sig_test0001"])
+    client.post("/tracking/sync")
+    assert f"Last checked {NOW.strftime('%Y-%m-%d %H:%M UTC')}." in client.get("/pipeline").text
 
 
 def test_sync_tracking_reports_errors_and_busy_lock(
@@ -455,10 +490,13 @@ def test_pipeline_sections_days_waiting_and_follow_up_flag(
     assert f'<tr id="outreach-{oid}" class="follow-up" ' in page
     assert "Follow up" in page and "<td>15" in page
     assert NOW.strftime("%Y-%m-%d %H:%M UTC") in page  # sent timestamp
-    assert f'action="/outreach/{oid}/replied"' in page
+    # Replies are detected automatically: the only per-row choices are deck / declined.
+    assert f'action="/outreach/{oid}/replied"' not in page
     assert f'action="/outreach/{oid}/deck-received"' in page
-    for reason in ("declined", "lapsed", "not_raising", "skipped"):
-        assert f'<option value="{reason}">' in page
+    assert f'action="/outreach/{oid}/close"' in page
+    assert '<input type="hidden" name="reason" value="declined">' in page
+    assert "<option value=" not in page
+    assert page.index('id="column-replied"') < page.index('id="column-sent"')
     overview = client.get("/").text
     assert "Follow-ups due (1)" in overview and f'href="/outreach/{oid}"' in overview
 
@@ -474,6 +512,9 @@ def test_pipeline_buttons_follow_the_state_machine(
     assert f'action="/outreach/{oid}/replied"' not in page
     client.post(f"/outreach/{oid}/deck-received", {"next": "/pipeline"})
     assert world.status(oid) is S.DECK_RECEIVED
+    page = client.get("/pipeline").text
+    assert f'action="/outreach/{oid}/deck-received"' not in page
+    assert '<option value="declined">' in page  # deck-received rows keep the full close menu
     response = client.post(f"/outreach/{oid}/close", {"reason": "declined", "next": "/pipeline"})
     assert "Closed (declined)." in client.flash(response)
     record = world.store.get_outreach(oid)

@@ -39,6 +39,7 @@ def create_app(services: Services | None = None, settings: Settings | None = Non
         production=settings.is_production,
         session_max_age_seconds=settings.session_max_age_seconds,
         trusted_proxy_hops=settings.trusted_proxy_hops,
+        tracking_interval_seconds=settings.tracking_interval_minutes * 60,
     )
     authenticator = PasswordAuthenticator(settings.admin_password_hash.get_secret_value())
     return create_web_app(

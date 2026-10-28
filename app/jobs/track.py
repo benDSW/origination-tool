@@ -19,7 +19,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ).parse_args(argv)
     _settings, services = _runtime.start()
     try:
-        result = services.origination.sync_tracking()
+        result = services.origination.sync_tracking(force=True)
         if result is None:
             _runtime.emit({"state": "skipped", "reason": "Another run was in progress"})
             return 0

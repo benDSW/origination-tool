@@ -8,6 +8,15 @@
 </form>
 {% endmacro %}
 
+{% macro declined_button(outreach_id, next) %}
+<form method="post" action="/outreach/{{ outreach_id }}/close" class="inline">
+  {{ csrf() }}
+  <input type="hidden" name="next" value="{{ next }}">
+  <input type="hidden" name="reason" value="declined">
+  <button type="submit" class="secondary">Declined</button>
+</form>
+{% endmacro %}
+
 {% macro close_form(outreach_id, next, reasons) %}
 <form method="post" action="/outreach/{{ outreach_id }}/close" class="inline">
   {{ csrf() }}

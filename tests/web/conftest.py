@@ -77,6 +77,7 @@ def make_settings(**overrides: object) -> Settings:
         "database_url": "sqlite://",
         "admin_password_hash": PASSWORD_HASH,
         "session_secret": SESSION_SECRET,
+        "tracking_interval_minutes": 0,  # no background timer in tests
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)  # type: ignore[call-arg]

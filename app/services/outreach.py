@@ -40,7 +40,8 @@ from app.services.suppression import SuppressionKeys
 logger = logging.getLogger(__name__)
 
 S = OutreachStatus
-PIPELINE_STATUSES: tuple[OutreachStatus, ...] = (S.SENT, S.REPLIED, S.DECK_RECEIVED)
+# Replied first: that is the column that needs a decision (deck received / declined).
+PIPELINE_STATUSES: tuple[OutreachStatus, ...] = (S.REPLIED, S.SENT, S.DECK_RECEIVED)
 # Statuses in which the user can still pick a different RocketReach address.
 CHOOSABLE_STATUSES: frozenset[OutreachStatus] = frozenset({S.NEEDS_EMAIL, S.DRAFTED})
 CREDITS_CACHE_SECONDS = 300
@@ -125,9 +126,11 @@ class _CreditsCache:
 
 @dataclass(frozen=True)
 class PipelineBoard:
-    """Sent / Replied / Deck received columns (R17)."""
+    """Replied / Sent / Deck received columns (R17)."""
 
     columns: dict[OutreachStatus, list[OutreachItem]] = field(default_factory=dict)
+    # Most recent automatic reply check of anything still awaiting a reply.
+    last_checked_at: datetime | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -182,14 +185,15 @@ class OutreachService:
         )
 
     def pipeline(self) -> PipelineBoard:
-        """Sent / Replied / Deck received, longest-waiting first."""
+        """Replied / Sent / Deck received, longest-waiting first."""
         items = self.list_by_status(PIPELINE_STATUSES, limit=MAX_LIST)
         columns: dict[OutreachStatus, list[OutreachItem]] = {s: [] for s in PIPELINE_STATUSES}
         for item in items:
             columns[item.outreach.status].append(item)
         for column in columns.values():
             column.sort(key=lambda i: -(i.days_waiting or 0))
-        return PipelineBoard(columns=columns)
+        checks = [i.outreach.last_tracked_at for i in columns[S.SENT] if i.outreach.last_tracked_at]
+        return PipelineBoard(columns=columns, last_checked_at=max(checks, default=None))
 
     def follow_ups_due(self) -> list[OutreachItem]:
         return [i for i in self.list_by_status([S.SENT], limit=MAX_LIST) if i.follow_up_due]
