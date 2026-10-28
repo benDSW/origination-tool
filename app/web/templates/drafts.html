@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Drafts ({{ items | length }})</h1>
 <p class="muted">Copy each draft into Outlook and send it yourself, then click Mark sent.</p>
-{% if items %}{{ m.search_box() }}{% endif %}
+{% if items %}{{ m.search_box(items | length, "drafts") }}{% endif %}
 {% for item in items %}
   {% set o = item.outreach %}
   <article class="card draft" id="outreach-{{ o.id }}" data-search-text="{{ m.search_text(item.founder) }}">
