@@ -173,6 +173,9 @@ No code changes; the Railway config files are simply ignored.
    so the scheduled job and the dashboard share one database whatever directory they start in.
 2. Double-click `scripts\start-dashboard.cmd` and open http://127.0.0.1:8000 (this computer only).
 3. Daily run: Windows Task Scheduler runs `scripts\daily-run.cmd` (output in `logs\daily.log`).
-   It only runs while the PC is on; use **Run now** in the dashboard otherwise.
+   Register it once with
+   `powershell -ExecutionPolicy Bypass -File scripts\register-daily-task.ps1` (08:00 daily; add
+   `-At 07:30` to change the time). If the PC is off at that time it runs once you are next logged
+   on; use **Run now** in the dashboard otherwise.
 4. Moving to Railway later: copy the SQLite pipeline state into Postgres with a one-off script
    (not yet written) so founders already contacted are not drafted again.
